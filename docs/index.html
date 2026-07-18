@@ -82,6 +82,9 @@
     color: var(--muted);
     cursor: default;
   }
+  .map-link.retry {
+    color: #c77700;
+  }
   .info-result {
     display: none;
     padding: 4px 20px 0;
@@ -455,9 +458,11 @@
         if (!result.ok) {
           mapState = "error";
           mapLink.disabled = false;
+          mapLink.classList.add("retry");
           mapLink.textContent = "Map ⟳";
           return;
         }
+        mapLink.classList.remove("retry");
         if (result.coords) {
           mapCoords = result.coords;
           mapState = "found";
@@ -474,6 +479,7 @@
         if (mapState === "error") {
           mapLink.textContent = "Map ⟳ …";
           mapLink.disabled = true;
+          mapLink.classList.remove("retry");
           refreshMapState();
           return;
         }
