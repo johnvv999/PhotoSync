@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     alias(libs.plugins.kotlin.compose)
+}
+
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localProps.load(new FileInputStream(localPropsFile))
 }
 
 android {
@@ -14,6 +22,7 @@ android {
         targetSdk 34
         versionCode 2
         versionName "2.0"
+        buildConfigField "String", "GEMINI_API_KEY", "\"${localProps.getProperty('GEMINI_API_KEY', '')}\""
     }
 
     buildTypes {
@@ -34,6 +43,14 @@ android {
     buildFeatures {
         viewBinding true
         compose true
+        buildConfig true
+    }
+
+    packaging {
+        resources {
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/DEPENDENCIES"
+        }
     }
 }
 
@@ -43,6 +60,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.7'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
 
     // WorkManager for periodic background upload
     implementation 'androidx.work:work-runtime-ktx:2.9.1'

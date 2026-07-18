@@ -1,6 +1,7 @@
 package com.johnvv.photosync
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -11,13 +12,13 @@ import androidx.work.*
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
 import com.johnvv.photosync.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
-import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,11 +30,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        val account = task.result
-        if (account != null) {
+        try {
+            val account = task.getResult(ApiException::class.java)
             syncState.selectedAccountName = account.email
             binding.statusText.text = "Signed in as ${account.email}"
-            schedulePeriodicSync()
+        } catch (e: ApiException) {
+            binding.statusText.text = "Sign-in failed (code ${e.statusCode}). Check the OAuth client setup in Google Cloud Console."
         }
     }
 
@@ -50,7 +52,7 @@ class MainActivity : AppCompatActivity() {
 
         val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
+            .requestScopes(Scope(DriveScopes.DRIVE_FILE), Scope(DriveScopes.DRIVE_READONLY))
             .build()
         googleSignInClient = GoogleSignIn.getClient(this, signInOptions)
 
@@ -60,7 +62,6 @@ class MainActivity : AppCompatActivity() {
         if (existingAccount != null) {
             syncState.selectedAccountName = existingAccount.email
             binding.statusText.text = "Signed in as ${existingAccount.email}"
-            schedulePeriodicSync()
         } else {
             binding.statusText.text = "Not signed in"
         }
@@ -75,6 +76,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.getLinkButton.setOnClickListener {
             showFolderLink()
+        }
+
+        binding.syncOptionsButton.setOnClickListener {
+            startActivity(Intent(this, SyncControlActivity::class.java))
+        }
+
+        binding.browseSyncedButton.setOnClickListener {
+            startActivity(Intent(this, SyncedPhotosActivity::class.java))
         }
     }
 
@@ -94,22 +103,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun schedulePeriodicSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val request = PeriodicWorkRequestBuilder<PhotoUploadWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "photosync_periodic_upload",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
-    }
-
     private fun triggerImmediateSync() {
         val request = OneTimeWorkRequestBuilder<PhotoUploadWorker>()
             .setConstraints(
@@ -122,6 +115,14 @@ class MainActivity : AppCompatActivity() {
             request
         )
         binding.statusText.text = "Sync started…"
+
+        WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
+            when (info?.state) {
+                WorkInfo.State.SUCCEEDED -> binding.statusText.text = "Sync complete"
+                WorkInfo.State.FAILED -> binding.statusText.text = "Sync failed. Check connection and sign-in."
+                else -> {} // still enqueued/running — leave "Sync started…" showing
+            }
+        }
     }
 
     private fun showFolderLink() {

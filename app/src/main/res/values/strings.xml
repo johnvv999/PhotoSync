@@ -4,4 +4,26 @@
     <string name="sign_in_with_google">Sign in with Google</string>
     <string name="sync_now">Sync now</string>
     <string name="get_folder_link">Get folder share link</string>
+    <string name="sync_options">Sync Options</string>
+    <string name="start_date_label">Start: %1$s</string>
+    <string name="end_date_label">End: %1$s</string>
+    <string name="date_not_set">Not set</string>
+    <string name="mode_all">Sync All</string>
+    <string name="mode_city">Sync by City</string>
+    <string name="mode_individual">Individual Photo Sync</string>
+    <string name="scan_button">Scan</string>
+    <string name="start_sync_button">Start Sync</string>
+    <string name="scanning_status">Scanning photos…</string>
+    <string name="no_photos_found">No photos found in this date range.</string>
+    <string name="select_at_least_one">Select at least one item first.</string>
+    <string name="sync_started_status">Sync started…</string>
+    <string name="sync_complete_status">Sync complete</string>
+    <string name="sync_failed_status">Sync failed. Check connection and sign-in.</string>
+    <string name="browse_synced_photos">Browse Synced Photos</string>
+    <string name="info_link">Info</string>
+    <string name="loading_info">Loading info…</string>
+    <string name="no_synced_photos">No synced photos yet. Sync some photos first.</string>
+    <string name="loading_synced_photos">Loading photos from Drive…</string>
+    <string name="not_signed_in_for_browse">Sign in first to browse your Drive photos.</string>
+    <string name="couldnt_load_photo">Couldn\'t load this photo from Drive.</string>
 </resources>

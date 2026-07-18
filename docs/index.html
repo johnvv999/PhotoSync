@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PhotoSync</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1c1c1e;
+    --muted: #6b6b70;
+    --header-bg: #f2f2f4;
+    --border: #e5e5e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121214;
+      --fg: #f2f2f3;
+      --muted: #a0a0a5;
+      --header-bg: #1e1e21;
+      --border: #2c2c2f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding-bottom: 48px;
+  }
+  .app-title {
+    padding: 24px 20px 16px;
+    font-size: 28px;
+    font-weight: 700;
+  }
+  .status {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .city-header {
+    position: sticky;
+    top: 0;
+    background: var(--header-bg);
+    padding: 14px 20px;
+    font-size: 19px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    z-index: 1;
+  }
+  .photo-card { padding: 0 0 20px; }
+  .photo-card img {
+    width: 100%;
+    display: block;
+    background: var(--header-bg);
+    min-height: 200px;
+  }
+  .photo-caption {
+    padding: 8px 20px 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="app-title">PhotoSync</div>
+  <div id="content" class="status">Loading photos…</div>
+</main>
+
+<script>
+  // --- Configuration ---
+  // Restricted Drive API key: Google Cloud Console → APIs & Services → Credentials
+  // → Create Credentials → API key. Restrict it to the Google Drive API only, and
+  // to this page's HTTP referrer (e.g. "https://<username>.github.io/*"), so a
+  // leaked key can only ever list/read files that are already publicly shared.
+  const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
+  const FOLDER_ID = "13Txwwqyr6e-UnCNbw-ceCXAZhxgPbXLr";
+
+  const contentEl = document.getElementById("content");
+
+  function cityLabelFromName(name) {
+    const base = name.replace(/\.[^/.]+$/, "");
+    const parts = base.split("_");
+    return parts.length >= 3 ? `${parts[1]}, ${parts[0]}` : "Other Photos";
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  async function loadPhotos() {
+    if (!DRIVE_API_KEY || DRIVE_API_KEY === "YOUR_DRIVE_API_KEY_HERE") {
+      contentEl.textContent = "This page isn't configured yet — missing Drive API key.";
+      return;
+    }
+
+    const url = new URL("https://www.googleapis.com/drive/v3/files");
+    url.searchParams.set("q", `'${FOLDER_ID}' in parents and trashed=false and mimeType contains 'image/'`);
+    url.searchParams.set("fields", "files(id,name,createdTime,parents,mimeType,trashed)");
+    url.searchParams.set("key", DRIVE_API_KEY);
+    url.searchParams.set("orderBy", "createdTime");
+
+    let files;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        contentEl.textContent = `Couldn't load photos (HTTP ${res.status}). The folder may not be shared publicly yet.`;
+        return;
+      }
+      const data = await res.json();
+      files = (data.files || []).filter(
+        (f) => f.trashed !== true &&
+               f.mimeType && f.mimeType.startsWith("image/") &&
+               (f.parents || []).includes(FOLDER_ID)
+      );
+    } catch (e) {
+      contentEl.textContent = "Couldn't reach Google Drive. Check your connection.";
+      return;
+    }
+
+    if (files.length === 0) {
+      contentEl.textContent = "No photos yet.";
+      return;
+    }
+
+    files.sort((a, b) => new Date(a.createdTime) - new Date(b.createdTime));
+
+    contentEl.className = "";
+    contentEl.innerHTML = "";
+
+    let lastCity = null;
+    for (const file of files) {
+      const city = cityLabelFromName(file.name);
+      if (city !== lastCity) {
+        const header = document.createElement("div");
+        header.className = "city-header";
+        header.textContent = city;
+        contentEl.appendChild(header);
+        lastCity = city;
+      }
+
+      const card = document.createElement("div");
+      card.className = "photo-card";
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.src = `https://drive.google.com/thumbnail?id=${file.id}&sz=w1000`;
+      img.alt = escapeHtml(file.name);
+      card.appendChild(img);
+      contentEl.appendChild(card);
+    }
+  }
+
+  loadPhotos();
+</script>
+</body>
+</html>

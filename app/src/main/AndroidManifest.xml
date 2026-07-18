@@ -25,6 +25,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".SyncControlActivity"
+            android:exported="false"
+            android:label="@string/sync_options"
+            android:theme="@style/Theme.PhotoSync" />
+        <activity
+            android:name=".SyncedPhotosActivity"
+            android:exported="false"
+            android:label="@string/browse_synced_photos"
+            android:theme="@style/Theme.PhotoSync" />
     </application>
 
 </manifest>

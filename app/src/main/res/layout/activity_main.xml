@@ -34,4 +34,18 @@
         android:layout_marginTop="16dp"
         android:text="@string/get_folder_link" />
 
+    <Button
+        android:id="@+id/syncOptionsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/sync_options" />
+
+    <Button
+        android:id="@+id/browseSyncedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/browse_synced_photos" />
+
 </LinearLayout>
