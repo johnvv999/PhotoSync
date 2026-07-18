@@ -98,12 +98,13 @@
   const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
   const FOLDER_ID = "13Txwwqyr6e-UnCNbw-ceCXAZhxgPbXLr";
 
-  // Separate restricted Gemini API key — create it in Google AI Studio under the
-  // same free-tier project used by the Android app, then restrict it (Application
-  // restrictions → Websites) to this page's URL, e.g. "https://<username>.github.io/*".
-  // Must be a DIFFERENT key from the Android app's — a key can only carry one
-  // restriction type, and the app's key is restricted differently (or unrestricted).
-  const GEMINI_API_KEY = "AQ.Ab8RN6JHNXRowFrQJAF-PsMXL0kVTbFbZ3SBkAULmhD7Aw7__w";
+  // Same Gemini API key as the Android app's local.properties (a classic key,
+  // not service-account-bound). Newly-created Gemini keys are now mandatorily
+  // bound to a service account, which requires an OAuth flow this static page
+  // can't use — so a domain-restricted key isn't achievable here. No billing
+  // account is attached to this project, so worst case if this leaks is the
+  // free-tier quota getting used up, not a charge.
+  const GEMINI_API_KEY = "AIzaSyB8AJNDjQdaCpKHLY7TMuvicaS0QfGXkoM";
   const GEMINI_MODEL = "gemini-flash-latest";
   const GEMINI_PROMPT =
     "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
