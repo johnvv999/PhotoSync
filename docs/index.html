@@ -63,16 +63,24 @@
     background: var(--header-bg);
     min-height: 200px;
   }
-  .info-link {
-    display: block;
+  .link-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 8px 20px 0;
+  }
+  .info-link, .map-link {
     font-size: 15px;
     font-weight: 700;
     color: #1a73e8;
     cursor: pointer;
     background: none;
     border: none;
-    text-align: left;
+    padding: 0;
+  }
+  .map-link[disabled] {
+    color: var(--muted);
+    cursor: default;
   }
   .info-result {
     display: none;
@@ -81,6 +89,14 @@
     color: var(--fg);
   }
   .info-result.visible { display: block; }
+  .map-embed {
+    display: none;
+    width: 100%;
+    height: 260px;
+    border: 0;
+    margin-top: 8px;
+  }
+  .map-embed.visible { display: block; }
 </style>
 </head>
 <body>
@@ -111,6 +127,7 @@
 
   const contentEl = document.getElementById("content");
   const infoCache = new Map();
+  const gpsCache = new Map();
 
   function cityLabelFromName(name) {
     const base = name.replace(/\.[^/.]+$/, "");
@@ -140,6 +157,105 @@
             reader.readAsDataURL(blob);
           })
       );
+  }
+
+  // Fetches just the first 128KB of the file — JPEG EXIF metadata always lives
+  // near the start, well before the compressed image data, so there's no need
+  // to download the whole photo just to check for a GPS tag.
+  async function fetchImagePrefix(fileId) {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${DRIVE_API_KEY}`;
+    const res = await fetch(url, { headers: { Range: "bytes=0-131071" } });
+    if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
+    return res.arrayBuffer();
+  }
+
+  /** Reads GPS coordinates from a JPEG's EXIF data, or null if none present. */
+  function readExifGps(buffer) {
+    const view = new DataView(buffer);
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+
+    let offset = 2;
+    while (offset + 4 <= view.byteLength) {
+      if (view.getUint8(offset) !== 0xff) break;
+      const marker = view.getUint8(offset + 1);
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2;
+        continue;
+      }
+      if (marker === 0xd9 || marker === 0xda) break;
+      const size = view.getUint16(offset + 2);
+      if (marker === 0xe1 && offset + 10 <= view.byteLength) {
+        const segStart = offset + 4;
+        const isExif =
+          view.getUint8(segStart) === 0x45 && view.getUint8(segStart + 1) === 0x78 &&
+          view.getUint8(segStart + 2) === 0x69 && view.getUint8(segStart + 3) === 0x66 &&
+          view.getUint8(segStart + 4) === 0x00 && view.getUint8(segStart + 5) === 0x00;
+        if (isExif) {
+          try { return parseExifGps(view, segStart + 6); } catch (e) { return null; }
+        }
+      }
+      offset += 2 + size;
+    }
+    return null;
+  }
+
+  function parseExifGps(view, tiffStart) {
+    const little = view.getUint16(tiffStart, false) === 0x4949;
+    const u16 = (o) => view.getUint16(o, little);
+    const u32 = (o) => view.getUint32(o, little);
+
+    const ifd0Offset = u32(tiffStart + 4);
+    let gpsIfdOffset = null;
+    const ifd0Count = u16(tiffStart + ifd0Offset);
+    for (let i = 0; i < ifd0Count; i++) {
+      const entryOffset = tiffStart + ifd0Offset + 2 + i * 12;
+      if (u16(entryOffset) === 0x8825) {
+        gpsIfdOffset = u32(entryOffset + 8);
+        break;
+      }
+    }
+    if (gpsIfdOffset == null) return null;
+
+    const gpsStart = tiffStart + gpsIfdOffset;
+    const gpsCount = u16(gpsStart);
+    let lat = null, latRef = null, lon = null, lonRef = null;
+
+    const readDms = (valueOffset) => {
+      let total = 0;
+      for (let j = 0; j < 3; j++) {
+        const num = u32(valueOffset + j * 8);
+        const den = u32(valueOffset + j * 8 + 4);
+        const value = den === 0 ? 0 : num / den;
+        total += j === 0 ? value : value / Math.pow(60, j);
+      }
+      return total;
+    };
+
+    for (let i = 0; i < gpsCount; i++) {
+      const entryOffset = gpsStart + 2 + i * 12;
+      const tag = u16(entryOffset);
+      const valueOffset = tiffStart + u32(entryOffset + 8);
+      if (tag === 0x0001) latRef = String.fromCharCode(view.getUint8(entryOffset + 8));
+      else if (tag === 0x0002) lat = readDms(valueOffset);
+      else if (tag === 0x0003) lonRef = String.fromCharCode(view.getUint8(entryOffset + 8));
+      else if (tag === 0x0004) lon = readDms(valueOffset);
+    }
+
+    if (lat == null || lon == null) return null;
+    return { lat: latRef === "S" ? -lat : lat, lon: lonRef === "W" ? -lon : lon };
+  }
+
+  async function getGpsForPhoto(fileId) {
+    if (gpsCache.has(fileId)) return gpsCache.get(fileId);
+    let coords = null;
+    try {
+      const buffer = await fetchImagePrefix(fileId);
+      coords = readExifGps(buffer);
+    } catch (e) {
+      coords = null;
+    }
+    gpsCache.set(fileId, coords);
+    return coords;
   }
 
   async function describePhoto(fileId, mimeType) {
@@ -231,15 +347,31 @@
       img.alt = escapeHtml(file.name);
       card.appendChild(img);
 
+      const linkRow = document.createElement("div");
+      linkRow.className = "link-row";
+      card.appendChild(linkRow);
+
       const infoLink = document.createElement("button");
       infoLink.className = "info-link";
       infoLink.type = "button";
       infoLink.textContent = "Info";
-      card.appendChild(infoLink);
+      linkRow.appendChild(infoLink);
+
+      const mapLink = document.createElement("button");
+      mapLink.className = "map-link";
+      mapLink.type = "button";
+      mapLink.textContent = "Map";
+      mapLink.disabled = true;
+      linkRow.appendChild(mapLink);
 
       const infoResult = document.createElement("div");
       infoResult.className = "info-result";
       card.appendChild(infoResult);
+
+      const mapEmbed = document.createElement("iframe");
+      mapEmbed.className = "map-embed";
+      mapEmbed.loading = "lazy";
+      card.appendChild(mapEmbed);
 
       infoLink.addEventListener("click", async () => {
         const cached = infoCache.get(file.id);
@@ -252,6 +384,19 @@
         const description = await describePhoto(file.id, file.mimeType);
         infoCache.set(file.id, description);
         infoResult.textContent = description;
+      });
+
+      mapLink.addEventListener("click", () => {
+        const coords = gpsCache.get(file.id);
+        if (!coords) return;
+        if (!mapEmbed.src) {
+          mapEmbed.src = `https://maps.google.com/maps?q=${coords.lat},${coords.lon}&z=15&output=embed`;
+        }
+        mapEmbed.classList.toggle("visible");
+      });
+
+      getGpsForPhoto(file.id).then((coords) => {
+        if (coords) mapLink.disabled = false;
       });
 
       contentEl.appendChild(card);
