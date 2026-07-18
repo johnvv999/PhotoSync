@@ -245,17 +245,20 @@
     return { lat: latRef === "S" ? -lat : lat, lon: lonRef === "W" ? -lon : lon };
   }
 
+  // Distinguishes "checked, no GPS tag present" from "couldn't check" (network/rate-limit
+  // failure) — treating those the same would make a temporary glitch look identical to a
+  // photo that genuinely has no location, with no way to tell the two apart or retry.
   async function getGpsForPhoto(fileId) {
     if (gpsCache.has(fileId)) return gpsCache.get(fileId);
-    let coords = null;
+    let result;
     try {
       const buffer = await fetchImagePrefix(fileId);
-      coords = readExifGps(buffer);
+      result = { ok: true, coords: readExifGps(buffer) };
     } catch (e) {
-      coords = null;
+      result = { ok: false };
     }
-    gpsCache.set(fileId, coords);
-    return coords;
+    if (result.ok) gpsCache.set(fileId, result);
+    return result;
   }
 
   async function describePhoto(fileId, mimeType) {
@@ -386,18 +389,44 @@
         infoResult.textContent = description;
       });
 
+      let mapCoords = null;
+      let mapState = "checking"; // "checking" | "found" | "none" | "error"
+
+      async function refreshMapState() {
+        const result = await getGpsForPhoto(file.id);
+        if (!result.ok) {
+          mapState = "error";
+          mapLink.disabled = false;
+          mapLink.textContent = "Map ⟳";
+          return;
+        }
+        if (result.coords) {
+          mapCoords = result.coords;
+          mapState = "found";
+          mapLink.disabled = false;
+          mapLink.textContent = "Map";
+        } else {
+          mapState = "none";
+          mapLink.disabled = true;
+          mapLink.textContent = "Map";
+        }
+      }
+
       mapLink.addEventListener("click", () => {
-        const coords = gpsCache.get(file.id);
-        if (!coords) return;
+        if (mapState === "error") {
+          mapLink.textContent = "Map ⟳ …";
+          mapLink.disabled = true;
+          refreshMapState();
+          return;
+        }
+        if (mapState !== "found" || !mapCoords) return;
         if (!mapEmbed.src) {
-          mapEmbed.src = `https://maps.google.com/maps?q=${coords.lat},${coords.lon}&z=15&output=embed`;
+          mapEmbed.src = `https://maps.google.com/maps?q=${mapCoords.lat},${mapCoords.lon}&z=15&output=embed`;
         }
         mapEmbed.classList.toggle("visible");
       });
 
-      getGpsForPhoto(file.id).then((coords) => {
-        if (coords) mapLink.disabled = false;
-      });
+      refreshMapState();
 
       contentEl.appendChild(card);
     }
