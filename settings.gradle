@@ -1,0 +1,3 @@
+rootProject.name = "PhotoSync"
+include ':app'
+include ':app'

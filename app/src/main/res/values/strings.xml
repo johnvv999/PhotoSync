@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">PhotoSync</string>
+    <string name="status_not_signed_in">Not signed in</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="sync_now">Sync now</string>
+    <string name="get_folder_link">Get folder share link</string>
+</resources>
