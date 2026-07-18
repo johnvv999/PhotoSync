@@ -146,9 +146,16 @@
     lastNominatimCallAt = Date.now();
 
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Nominatim request failed (HTTP ${res.status})`);
-    const data = await res.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let data;
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`Nominatim request failed (HTTP ${res.status})`);
+      data = await res.json();
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const addr = data.address || {};
     const city = addr.city || addr.town || addr.village || addr.municipality || addr.county;
     const country = addr.country;
@@ -198,12 +205,19 @@
 
   // Fetches just the first 128KB of the file — JPEG EXIF metadata always lives
   // near the start, well before the compressed image data, so there's no need
-  // to download the whole photo just to check for a GPS tag.
+  // to download the whole photo just to check for a GPS tag. Capped at 10s so a
+  // slow/rate-limited request can't hang the whole page's location resolution.
   async function fetchImagePrefix(fileId) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${DRIVE_API_KEY}`;
-    const res = await fetch(url, { headers: { Range: "bytes=0-131071" } });
-    if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
-    return res.arrayBuffer();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(url, { headers: { Range: "bytes=0-131071" }, signal: controller.signal });
+      if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
+      return await res.arrayBuffer();
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /** Reads GPS coordinates from a JPEG's EXIF data, or null if none present. */
