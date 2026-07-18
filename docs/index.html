@@ -63,11 +63,24 @@
     background: var(--header-bg);
     min-height: 200px;
   }
-  .photo-caption {
+  .info-link {
+    display: block;
     padding: 8px 20px 0;
-    font-size: 13px;
-    color: var(--muted);
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a73e8;
+    cursor: pointer;
+    background: none;
+    border: none;
+    text-align: left;
   }
+  .info-result {
+    display: none;
+    padding: 4px 20px 0;
+    font-size: 14px;
+    color: var(--fg);
+  }
+  .info-result.visible { display: block; }
 </style>
 </head>
 <body>
@@ -85,7 +98,18 @@
   const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
   const FOLDER_ID = "13Txwwqyr6e-UnCNbw-ceCXAZhxgPbXLr";
 
+  // Separate restricted Gemini API key — create it in Google AI Studio under the
+  // same free-tier project used by the Android app, then restrict it (Application
+  // restrictions → Websites) to this page's URL, e.g. "https://<username>.github.io/*".
+  // Must be a DIFFERENT key from the Android app's — a key can only carry one
+  // restriction type, and the app's key is restricted differently (or unrestricted).
+  const GEMINI_API_KEY = "AQ.Ab8RN6JHNXRowFrQJAF-PsMXL0kVTbFbZ3SBkAULmhD7Aw7__w";
+  const GEMINI_MODEL = "gemini-flash-latest";
+  const GEMINI_PROMPT =
+    "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
+
   const contentEl = document.getElementById("content");
+  const infoCache = new Map();
 
   function cityLabelFromName(name) {
     const base = name.replace(/\.[^/.]+$/, "");
@@ -97,6 +121,53 @@
     return s.replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
+  }
+
+  function fetchImageAsBase64(fileId) {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${DRIVE_API_KEY}`;
+    return fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
+        return res.blob();
+      })
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(",")[1]);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+          })
+      );
+  }
+
+  async function describePhoto(fileId, mimeType) {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+      return "Info isn't configured for this page yet.";
+    }
+    try {
+      const base64Image = await fetchImageAsBase64(fileId);
+      const body = {
+        contents: [{
+          parts: [
+            { text: GEMINI_PROMPT },
+            { inline_data: { mime_type: mimeType || "image/jpeg", data: base64Image } }
+          ]
+        }]
+      };
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        return `Gemini request failed (${res.status}): ${(data.error && data.error.message) || "unknown error"}`;
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      return text ? text.trim() : "No description returned.";
+    } catch (e) {
+      return `Couldn't get info: ${e.message}`;
+    }
   }
 
   async function loadPhotos() {
@@ -152,11 +223,36 @@
 
       const card = document.createElement("div");
       card.className = "photo-card";
+
       const img = document.createElement("img");
       img.loading = "lazy";
       img.src = `https://drive.google.com/thumbnail?id=${file.id}&sz=w1000`;
       img.alt = escapeHtml(file.name);
       card.appendChild(img);
+
+      const infoLink = document.createElement("button");
+      infoLink.className = "info-link";
+      infoLink.type = "button";
+      infoLink.textContent = "Info";
+      card.appendChild(infoLink);
+
+      const infoResult = document.createElement("div");
+      infoResult.className = "info-result";
+      card.appendChild(infoResult);
+
+      infoLink.addEventListener("click", async () => {
+        const cached = infoCache.get(file.id);
+        if (cached) {
+          infoResult.classList.toggle("visible");
+          return;
+        }
+        infoResult.classList.add("visible");
+        infoResult.textContent = "Loading info…";
+        const description = await describePhoto(file.id, file.mimeType);
+        infoCache.set(file.id, description);
+        infoResult.textContent = description;
+      });
+
       contentEl.appendChild(card);
     }
   }
