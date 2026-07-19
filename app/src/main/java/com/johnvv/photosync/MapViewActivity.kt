@@ -31,6 +31,7 @@ class MapViewActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map_view)
         (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
+        findViewById<android.widget.Button>(R.id.returnButton).setOnClickListener { finish() }
     }
 
     override fun onMapReady(map: com.google.android.gms.maps.GoogleMap) {
