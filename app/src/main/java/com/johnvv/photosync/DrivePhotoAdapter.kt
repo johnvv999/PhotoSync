@@ -127,7 +127,11 @@ class DrivePhotoAdapter(
         holder.mapLink.setTextColor(if (hasGps) Color.parseColor("#1A73E8") else Color.parseColor("#6B6B70"))
         holder.mapLink.setOnClickListener {
             if (!hasGps) return@setOnClickListener
-            val uri = Uri.parse("geo:${photo.lat},${photo.lon}?q=${photo.lat},${photo.lon}")
+            // No "q=" query param: that would make Maps treat this as a place
+            // search and show the full place card (name, address, Directions,
+            // etc). A plain "geo:lat,lon?z=" just centers a zoomable map with
+            // no pin or card.
+            val uri = Uri.parse("geo:${photo.lat},${photo.lon}?z=16")
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
             } catch (e: ActivityNotFoundException) {
