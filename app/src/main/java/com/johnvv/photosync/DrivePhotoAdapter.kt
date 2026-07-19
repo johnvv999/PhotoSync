@@ -1,14 +1,19 @@
 package com.johnvv.photosync
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.net.Uri
 import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +48,7 @@ class DrivePhotoAdapter(
     class PhotoViewHolder(root: View) : RecyclerView.ViewHolder(root) {
         val thumbnail: ImageView = root.findViewById(R.id.thumbnail)
         val infoLink: TextView = root.findViewById(R.id.infoLink)
+        val mapLink: TextView = root.findViewById(R.id.mapLink)
         val infoResult: TextView = root.findViewById(R.id.infoResult)
         var thumbnailJob: Job? = null
         var infoJob: Job? = null
@@ -113,6 +119,19 @@ class DrivePhotoAdapter(
                 }
                 infoCache[photo.fileId] = description
                 holder.infoResult.text = description
+            }
+        }
+
+        val hasGps = photo.lat != null && photo.lon != null
+        holder.mapLink.isEnabled = hasGps
+        holder.mapLink.setTextColor(if (hasGps) Color.parseColor("#1A73E8") else Color.parseColor("#6B6B70"))
+        holder.mapLink.setOnClickListener {
+            if (!hasGps) return@setOnClickListener
+            val uri = Uri.parse("geo:${photo.lat},${photo.lon}?q=${photo.lat},${photo.lon}")
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            } catch (e: ActivityNotFoundException) {
+                Toast.makeText(context, R.string.no_maps_app, Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -17,13 +17,16 @@ data class PhotoLocation(val city: String, val country: String) {
 
 object LocationNaming {
 
-    /** Reads GPS EXIF from the given stream. Returns null if no GPS tag is present. */
+    /** Reads GPS EXIF from the given stream. Returns null if no usable GPS tag is present. */
     fun readLatLong(inputStream: InputStream): DoubleArray? {
         val exif = ExifInterface(inputStream)
         val latLong = FloatArray(2)
-        return if (exif.getLatLong(latLong)) {
-            doubleArrayOf(latLong[0].toDouble(), latLong[1].toDouble())
-        } else null
+        if (!exif.getLatLong(latLong)) return null
+        // (0, 0) — "Null Island", open ocean off West Africa — is the standard
+        // signature of a camera app writing a blank/unset GPS tag rather than a
+        // real location, not an actual photo location.
+        if (latLong[0] == 0f && latLong[1] == 0f) return null
+        return doubleArrayOf(latLong[0].toDouble(), latLong[1].toDouble())
     }
 
     /** Reverse-geocodes to city/country. Falls back to "Unsorted"/"NoGPS" on failure. */

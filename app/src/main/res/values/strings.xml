@@ -26,4 +26,7 @@
     <string name="loading_synced_photos">Loading photos from Drive…</string>
     <string name="not_signed_in_for_browse">Sign in first to browse your Drive photos.</string>
     <string name="couldnt_load_photo">Couldn\'t load this photo from Drive.</string>
+    <string name="map_link">Map</string>
+    <string name="no_maps_app">No Maps app found to open this location.</string>
+    <string name="couldnt_load_synced_photos">Couldn\'t load photos from Drive. Check your connection and try again.</string>
 </resources>

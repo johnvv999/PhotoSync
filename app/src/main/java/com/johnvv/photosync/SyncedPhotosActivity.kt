@@ -35,11 +35,17 @@ class SyncedPhotosActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val drive = DriveServiceHelper(this@SyncedPhotosActivity, accountName)
-            val photos = withContext(Dispatchers.IO) {
-                val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().also {
-                    syncState.rootFolderId = it
+            val photos = try {
+                withContext(Dispatchers.IO) {
+                    val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().also {
+                        syncState.rootFolderId = it
+                    }
+                    drive.listPhotosInFolder(folderId)
                 }
-                drive.listPhotosInFolder(folderId)
+            } catch (e: Exception) {
+                binding.emptyText.text = getString(R.string.couldnt_load_synced_photos)
+                binding.emptyText.visibility = View.VISIBLE
+                return@launch
             }
             if (photos.isEmpty()) {
                 binding.emptyText.text = getString(R.string.no_synced_photos)

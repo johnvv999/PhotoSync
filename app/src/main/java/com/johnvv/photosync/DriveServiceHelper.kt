@@ -99,27 +99,30 @@ class DriveServiceHelper(context: Context, accountName: String) {
             .sortedBy { it.createdTime?.value ?: 0L }
             .map { file ->
                 val createdMs = file.createdTime?.value ?: 0L
-                DrivePhoto(file.id, file.name, createdMs, resolveCityLabel(file.id, file.name))
+                val (cityLabel, latLong) = resolveCityLabelAndGps(file.id, file.name)
+                DrivePhoto(file.id, file.name, createdMs, cityLabel, latLong?.get(0), latLong?.get(1))
             }
     }
 
     /**
-     * City label for a Drive photo: parsed from this app's own upload naming
-     * convention ("Country_City_NNN.ext") when possible; otherwise falls back
-     * to downloading the photo and reverse-geocoding its GPS EXIF, the same
-     * way [PhotoScanner.groupByCity] does for on-device photos.
+     * City label plus raw GPS coordinates (if any) for a Drive photo. The city
+     * label is parsed from this app's own upload naming convention
+     * ("Country_City_NNN.ext") when possible; otherwise both are resolved from
+     * the photo's GPS EXIF, the same way [PhotoScanner.groupByCity] does for
+     * on-device photos.
      */
-    private fun resolveCityLabel(fileId: String, fileName: String): String {
+    private fun resolveCityLabelAndGps(fileId: String, fileName: String): Pair<String, DoubleArray?> {
         val parts = fileName.substringBeforeLast('.').split("_")
-        if (parts.size >= 3) return "${parts[1]}, ${parts[0]}"
+        if (parts.size >= 3) return "${parts[1]}, ${parts[0]}" to null
 
         return try {
             val bytes = downloadPhotoBytes(fileId)
-            val location = ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
-                ?.let { latLong -> LocationNaming.reverseGeocode(appContext, latLong[0], latLong[1]) }
-            location?.let { "${it.city}, ${it.country}" } ?: "No GPS Data"
+            val latLong = ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
+            val location = latLong?.let { LocationNaming.reverseGeocode(appContext, it[0], it[1]) }
+            val cityLabel = location?.let { "${it.city}, ${it.country}" } ?: "No GPS Data"
+            cityLabel to latLong
         } catch (e: Exception) {
-            "No GPS Data"
+            "No GPS Data" to null
         }
     }
 
@@ -133,4 +136,11 @@ class DriveServiceHelper(context: Context, accountName: String) {
 }
 
 /** A single image file listed from a Drive folder. */
-data class DrivePhoto(val fileId: String, val name: String, val createdTimeMs: Long, val cityLabel: String)
+data class DrivePhoto(
+    val fileId: String,
+    val name: String,
+    val createdTimeMs: Long,
+    val cityLabel: String,
+    val lat: Double? = null,
+    val lon: Double? = null
+)
