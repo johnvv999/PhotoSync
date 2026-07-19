@@ -3,6 +3,8 @@ package com.johnvv.photosync
 import android.Manifest
 import android.accounts.AccountManager
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -163,8 +165,18 @@ class MainActivity : AppCompatActivity() {
             }
             val link = drive.getWebViewLink(folderId)
             runOnUiThread {
-                binding.statusText.text = link
-                    ?: "Folder created, but no link yet — open Drive and share it manually."
+                if (link != null) {
+                    val label = "Our Adventure"
+                    // HTML representation shows as a named hyperlink when pasted into a
+                    // rich-text-capable target (e.g. an HTML email body); the plain-text
+                    // fallback (name + raw URL together) is what SMS and other plain-text
+                    // targets receive instead, since a custom-labelled link isn't possible there.
+                    val clip = ClipData.newHtmlText(label, "$label: $link", "<a href=\"$link\">$label</a>")
+                    (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                    binding.statusText.text = "\"$label\" link copied — paste it into a message or email."
+                } else {
+                    binding.statusText.text = "Folder created, but no link yet — open Drive and share it manually."
+                }
             }
         }
     }
