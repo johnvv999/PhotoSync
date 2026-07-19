@@ -107,23 +107,28 @@ class DriveServiceHelper(context: Context, accountName: String) {
     /**
      * City label plus raw GPS coordinates (if any) for a Drive photo. The city
      * label is parsed from this app's own upload naming convention
-     * ("Country_City_NNN.ext") when possible; otherwise both are resolved from
-     * the photo's GPS EXIF, the same way [PhotoScanner.groupByCity] does for
-     * on-device photos.
+     * ("Country_City_NNN.ext") when possible; otherwise it's resolved from the
+     * photo's GPS EXIF, the same way [PhotoScanner.groupByCity] does for
+     * on-device photos. Either way, GPS coordinates are read from EXIF whenever
+     * present — even app-uploaded photos already have a resolved city name in
+     * their filename, but the Map link still needs the raw coordinates.
      */
     private fun resolveCityLabelAndGps(fileId: String, fileName: String): Pair<String, DoubleArray?> {
         val parts = fileName.substringBeforeLast('.').split("_")
-        if (parts.size >= 3) return "${parts[1]}, ${parts[0]}" to null
+        val nameLabel = if (parts.size >= 3) "${parts[1]}, ${parts[0]}" else null
 
-        return try {
-            val bytes = downloadPhotoBytes(fileId)
-            val latLong = ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
-            val location = latLong?.let { LocationNaming.reverseGeocode(appContext, it[0], it[1]) }
-            val cityLabel = location?.let { "${it.city}, ${it.country}" } ?: "No GPS Data"
-            cityLabel to latLong
+        val latLong = try {
+            val bytes = downloadPhotoPrefix(fileId)
+            ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
         } catch (e: Exception) {
-            "No GPS Data" to null
+            null
         }
+
+        if (nameLabel != null) return nameLabel to latLong
+
+        val location = latLong?.let { LocationNaming.reverseGeocode(appContext, it[0], it[1]) }
+        val cityLabel = location?.let { "${it.city}, ${it.country}" } ?: "No GPS Data"
+        return cityLabel to latLong
     }
 
     /** Downloads the raw bytes of [fileId]. */
@@ -132,6 +137,14 @@ class DriveServiceHelper(context: Context, accountName: String) {
         val bytes = service.files().get(fileId).executeMediaAsInputStream().use { it.readBytes() }
         downloadCache.put(fileId, bytes)
         return bytes
+    }
+
+    /** Downloads just enough of [fileId]'s start to read its EXIF header cheaply, without pulling the full image. */
+    private fun downloadPhotoPrefix(fileId: String, byteCount: Int = 131072): ByteArray {
+        downloadCache.get(fileId)?.let { return it }
+        val get = service.files().get(fileId)
+        get.requestHeaders.range = "bytes=0-${byteCount - 1}"
+        return get.executeMediaAsInputStream().use { it.readBytes() }
     }
 }
 

@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -64,7 +65,7 @@ class PhotoUploadWorker(
             MODE_INDIVIDUAL -> {
                 val ids = inputData.getString(KEY_PHOTO_IDS).orEmpty()
                     .split(",").filter { it.isNotBlank() }.map { it.toLong() }
-                uploadEntries(drive, indexStore, uploadedStore, rootFolderId, ids.map { PhotoEntry(it, 0L) })
+                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, ids.map { PhotoEntry(it, 0L) })
             }
             MODE_CITY -> {
                 val cityKeys = inputData.getString(KEY_CITY_KEYS).orEmpty()
@@ -73,20 +74,37 @@ class PhotoUploadWorker(
                 val matching = PhotoScanner.groupByCity(applicationContext, photos)
                     .filter { it.locationKey in cityKeys }
                     .flatMap { it.photos }
-                uploadEntries(drive, indexStore, uploadedStore, rootFolderId, matching)
+                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, matching)
             }
             MODE_ALL -> {
                 val photos = PhotoScanner.queryPhotos(applicationContext, startEpochMs(), endEpochMs())
-                uploadEntries(drive, indexStore, uploadedStore, rootFolderId, photos)
+                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, photos)
             }
             else -> runAutoSync(syncState, drive, indexStore, uploadedStore, rootFolderId)
         }
+    }
+
+    /**
+     * The cached root folder ID can go stale if the PhotoSync folder was
+     * deleted on Drive after the app already cached its ID — every upload
+     * then 404s on the parent forever. Clearing the cache lets the next
+     * attempt recreate the folder via getOrCreateRootFolder().
+     */
+    private fun handleUploadException(syncState: SyncState, id: Long, e: Exception): Result {
+        if (e is GoogleJsonResponseException && e.statusCode == 404) {
+            Log.w(TAG, "Upload failed for photo id=$id: root folder missing on Drive, recreating", e)
+            syncState.rootFolderId = null
+        } else {
+            Log.w(TAG, "Upload failed for photo id=$id, will retry", e)
+        }
+        return Result.retry()
     }
 
     private fun startEpochMs(): Long? = inputData.getLong(KEY_START_EPOCH_MS, -1L).takeIf { it >= 0 }
     private fun endEpochMs(): Long? = inputData.getLong(KEY_END_EPOCH_MS, -1L).takeIf { it >= 0 }
 
     private fun uploadEntries(
+        syncState: SyncState,
         drive: DriveServiceHelper,
         indexStore: LocationIndexStore,
         uploadedStore: UploadedPhotoStore,
@@ -99,8 +117,7 @@ class PhotoUploadWorker(
             try {
                 uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, entry.id, entry.contentUri())
             } catch (e: Exception) {
-                Log.w(TAG, "Upload failed for photo id=${entry.id}, will retry", e)
-                return Result.retry()
+                return handleUploadException(syncState, entry.id, e)
             }
         }
         return Result.success()
@@ -178,8 +195,7 @@ class PhotoUploadWorker(
                 } catch (e: Exception) {
                     // Leave lastSyncedEpochSeconds where it is; this photo (and any
                     // after it) will be retried on the next run.
-                    Log.w(TAG, "Upload failed for photo id=$id, will retry", e)
-                    return Result.retry()
+                    return handleUploadException(syncState, id, e)
                 }
             }
         }
