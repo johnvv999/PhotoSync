@@ -43,10 +43,15 @@ class PhotoUploadWorker(
             ?: return@withContext Result.failure() // not signed in yet
 
         val drive = DriveServiceHelper(applicationContext, accountName)
-        val rootFolderId = syncState.rootFolderId ?: run {
+        val rootFolderId = syncState.rootFolderId ?: try {
             val id = drive.getOrCreateRootFolder()
             syncState.rootFolderId = id
             id
+        } catch (e: Exception) {
+            // Transient network/auth hiccup setting up the Drive folder — retry
+            // later rather than permanently failing (which Result.failure()
+            // would do, requiring the user to manually restart the sync).
+            return@withContext Result.retry()
         }
         val indexStore = LocationIndexStore(applicationContext)
         val uploadedStore = UploadedPhotoStore(applicationContext)
