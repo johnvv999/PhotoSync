@@ -18,3 +18,10 @@
 local.properties
 cloudflare-worker/.wrangler/
 cloudflare-worker/node_modules/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
