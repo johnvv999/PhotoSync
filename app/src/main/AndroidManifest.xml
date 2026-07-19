@@ -16,6 +16,9 @@
         android:allowBackup="true"
         android:label="PhotoSync"
         android:theme="@style/Theme.Material3.DayNight">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,6 +40,11 @@
             android:name=".SyncedPhotosActivity"
             android:exported="false"
             android:label="@string/browse_synced_photos"
+            android:theme="@style/Theme.PhotoSync" />
+        <activity
+            android:name=".MapViewActivity"
+            android:exported="false"
+            android:label="@string/map_link"
             android:theme="@style/Theme.PhotoSync" />
     </application>
 

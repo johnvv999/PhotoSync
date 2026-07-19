@@ -16,3 +16,5 @@
 /Archive
 /PhotoSync
 local.properties
+cloudflare-worker/.wrangler/
+cloudflare-worker/node_modules/

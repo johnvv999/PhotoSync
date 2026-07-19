@@ -1,19 +1,15 @@
 package com.johnvv.photosync
 
-import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.net.Uri
 import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -127,16 +123,7 @@ class DrivePhotoAdapter(
         holder.mapLink.setTextColor(if (hasGps) Color.parseColor("#1A73E8") else Color.parseColor("#6B6B70"))
         holder.mapLink.setOnClickListener {
             if (!hasGps) return@setOnClickListener
-            // No "q=" query param: that would make Maps treat this as a place
-            // search and show the full place card (name, address, Directions,
-            // etc). A plain "geo:lat,lon?z=" just centers a zoomable map with
-            // no pin or card.
-            val uri = Uri.parse("geo:${photo.lat},${photo.lon}?z=16")
-            try {
-                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-            } catch (e: ActivityNotFoundException) {
-                Toast.makeText(context, R.string.no_maps_app, Toast.LENGTH_SHORT).show()
-            }
+            MapViewActivity.start(context, photo.lat!!, photo.lon!!)
         }
     }
 
