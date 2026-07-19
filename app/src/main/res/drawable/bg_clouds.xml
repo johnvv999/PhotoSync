@@ -1,0 +1,90 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="360dp"
+    android:height="720dp"
+    android:viewportWidth="360"
+    android:viewportHeight="720">
+
+    <!-- Sky gradient -->
+    <path android:pathData="M0,0h360v720h-360z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="0"
+                android:endY="720"
+                android:startColor="#64B5F6"
+                android:endColor="#E3F2FD" />
+        </aapt:attr>
+    </path>
+
+    <!-- Each cloud is a cluster of overlapping circles, which reliably reads as a puffy cloud silhouette. -->
+
+    <!-- Cloud A -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.95"
+        android:pathData="
+            M32,160 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0
+            M47,147 a32,32 0 1,0 64,0 a32,32 0 1,0 -64,0
+            M71,134 a34,34 0 1,0 68,0 a34,34 0 1,0 -68,0
+            M109,153 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0
+            M71,166 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0" />
+
+    <!-- Cloud B -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.88"
+        android:pathData="
+            M219,118 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0
+            M231,107 a26,26 0 1,0 52,0 a26,26 0 1,0 -52,0
+            M251,97 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0
+            M281,113 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0
+            M251,123 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+
+    <!-- Cloud C -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.85"
+        android:pathData="
+            M241,309 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0
+            M255,297 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0
+            M277,285 a32,32 0 1,0 64,0 a32,32 0 1,0 -64,0
+            M313,303 a23,23 0 1,0 46,0 a23,23 0 1,0 -46,0
+            M277,315 a26,26 0 1,0 52,0 a26,26 0 1,0 -52,0" />
+
+    <!-- Cloud D -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.8"
+        android:pathData="
+            M8,407 a16,16 0 1,0 32,0 a16,16 0 1,0 -32,0
+            M19,398 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0
+            M37,388 a25,25 0 1,0 50,0 a25,25 0 1,0 -50,0
+            M66,402 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0
+            M37,412 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0" />
+
+    <!-- Cloud E -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.75"
+        android:pathData="
+            M171,548 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0
+            M183,537 a28,28 0 1,0 56,0 a28,28 0 1,0 -56,0
+            M204,526 a29,29 0 1,0 58,0 a29,29 0 1,0 -58,0
+            M238,543 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0
+            M204,554 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0" />
+
+    <!-- Cloud F -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.7"
+        android:pathData="
+            M44,638 a17,17 0 1,0 34,0 a17,17 0 1,0 -34,0
+            M56,627 a26,26 0 1,0 52,0 a26,26 0 1,0 -52,0
+            M76,617 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0
+            M106,633 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0
+            M76,643 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+
+</vector>
