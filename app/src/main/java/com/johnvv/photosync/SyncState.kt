@@ -18,4 +18,14 @@ class SyncState(context: Context) {
     var rootFolderId: String?
         get() = prefs.getString("root_folder_id", null)
         set(value) = prefs.edit().putString("root_folder_id", value).apply()
+
+    /**
+     * Whether the account has been confirmed via Android's account-chooser dialog.
+     * GoogleAccountCredential needs that explicit picker flow (not just a matching
+     * email string) to get real AccountManager visibility into a Google account —
+     * without it, token requests fail with an opaque null-Account crash.
+     */
+    var driveAccountAuthorized: Boolean
+        get() = prefs.getBoolean("drive_account_authorized", false)
+        set(value) = prefs.edit().putBoolean("drive_account_authorized", value).apply()
 }

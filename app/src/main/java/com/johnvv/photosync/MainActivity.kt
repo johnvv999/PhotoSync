@@ -1,6 +1,8 @@
 package com.johnvv.photosync
 
 import android.Manifest
+import android.accounts.AccountManager
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -34,6 +36,7 @@ class MainActivity : AppCompatActivity() {
             val account = task.getResult(ApiException::class.java)
             syncState.selectedAccountName = account.email
             binding.statusText.text = "Signed in as ${account.email}"
+            launchAccountPickerIfNeeded()
         } catch (e: ApiException) {
             binding.statusText.text = "Sign-in failed (code ${e.statusCode}). Check the OAuth client setup in Google Cloud Console."
         }
@@ -42,6 +45,19 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* proceed regardless; worker will just skip GPS tagging if location perm denied */ }
+
+    private val accountPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val pickedName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+        if (result.resultCode == Activity.RESULT_OK && pickedName != null) {
+            syncState.selectedAccountName = pickedName
+            syncState.driveAccountAuthorized = true
+            binding.statusText.text = "Signed in as $pickedName"
+        } else {
+            binding.statusText.text = "Drive account access wasn't granted — sync won't work until you allow it."
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         if (existingAccount != null) {
             syncState.selectedAccountName = existingAccount.email
             binding.statusText.text = "Signed in as ${existingAccount.email}"
+            launchAccountPickerIfNeeded()
         } else {
             binding.statusText.text = "Not signed in"
         }
@@ -87,8 +104,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Launches Android's account-chooser dialog once, the first time this
+     * account is used. That explicit picker flow is what actually grants this
+     * app AccountManager visibility into the account for GoogleAccountCredential
+     * — just matching an email string from Google Sign-In isn't enough.
+     */
+    private fun launchAccountPickerIfNeeded() {
+        if (syncState.driveAccountAuthorized) return
+        val intent = AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)
+        accountPickerLauncher.launch(intent)
+    }
+
     private fun requestNeededPermissions() {
-        val perms = mutableListOf(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        val perms = mutableListOf(Manifest.permission.ACCESS_MEDIA_LOCATION, Manifest.permission.GET_ACCOUNTS)
         perms.add(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 Manifest.permission.READ_MEDIA_IMAGES

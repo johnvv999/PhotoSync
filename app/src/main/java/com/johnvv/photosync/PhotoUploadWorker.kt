@@ -4,10 +4,13 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private const val TAG = "PhotoUploadWorker"
 
 /**
  * Uploads photos to the flat PhotoSync Drive folder as "Country_City_NNN.jpg".
@@ -51,6 +54,7 @@ class PhotoUploadWorker(
             // Transient network/auth hiccup setting up the Drive folder — retry
             // later rather than permanently failing (which Result.failure()
             // would do, requiring the user to manually restart the sync).
+            Log.w(TAG, "getOrCreateRootFolder failed, will retry", e)
             return@withContext Result.retry()
         }
         val indexStore = LocationIndexStore(applicationContext)
@@ -95,6 +99,7 @@ class PhotoUploadWorker(
             try {
                 uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, entry.id, entry.contentUri())
             } catch (e: Exception) {
+                Log.w(TAG, "Upload failed for photo id=${entry.id}, will retry", e)
                 return Result.retry()
             }
         }
@@ -173,6 +178,7 @@ class PhotoUploadWorker(
                 } catch (e: Exception) {
                     // Leave lastSyncedEpochSeconds where it is; this photo (and any
                     // after it) will be retried on the next run.
+                    Log.w(TAG, "Upload failed for photo id=$id, will retry", e)
                     return Result.retry()
                 }
             }
