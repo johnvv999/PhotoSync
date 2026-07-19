@@ -38,6 +38,8 @@ class SyncControlActivity : AppCompatActivity() {
         binding = ActivitySyncControlBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        if (startEpochMs == null) startEpochMs = minStartDateEpochMs()
+        if (endEpochMs == null) endEpochMs = todayEndEpochMs()
         updateDateButtons()
 
         binding.startDateButton.setOnClickListener { pickDate(isStart = true) }
@@ -53,7 +55,7 @@ class SyncControlActivity : AppCompatActivity() {
         val calendar = Calendar.getInstance()
         (if (isStart) startEpochMs else endEpochMs)?.let { calendar.timeInMillis = it }
 
-        DatePickerDialog(
+        val dialog = DatePickerDialog(
             this,
             { _, year, month, day ->
                 val picked = Calendar.getInstance().apply {
@@ -64,7 +66,12 @@ class SyncControlActivity : AppCompatActivity() {
                 updateDateButtons()
             },
             calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        )
+        // The app didn't track photos before this date, so an earlier start date
+        // would just find nothing — block it in the picker rather than let the
+        // user pick a range that silently returns no results.
+        if (isStart) dialog.datePicker.minDate = minStartDateEpochMs()
+        dialog.show()
     }
 
     private fun updateDateButtons() {
@@ -163,4 +170,16 @@ class SyncControlActivity : AppCompatActivity() {
         startEpochMs?.let { builder.putLong(PhotoUploadWorker.KEY_START_EPOCH_MS, it) }
         endEpochMs?.let { builder.putLong(PhotoUploadWorker.KEY_END_EPOCH_MS, it) }
     }
+
+    private fun minStartDateEpochMs(): Long = Calendar.getInstance().apply {
+        set(2026, Calendar.JULY, 16, 0, 0, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun todayEndEpochMs(): Long = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }.timeInMillis
 }
