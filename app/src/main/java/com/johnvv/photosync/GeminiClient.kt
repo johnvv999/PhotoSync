@@ -3,23 +3,23 @@ package com.johnvv.photosync
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Sends a photo to the Gemini API (free-tier flash model) and returns a short description. */
+/**
+ * Sends a photo to the PhotoSync Gemini proxy (Cloudflare Worker, see
+ * /cloudflare-worker) and returns a short description. The Worker holds the
+ * real Gemini credential server-side — nothing Gemini-related is embedded in
+ * the APK, since anything here would be trivially extractable.
+ */
 object GeminiClient {
-
-    private const val MODEL = "gemini-flash-latest"
-    private const val PROMPT =
-        "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences."
 
     /** Blocking network call — run this from a background dispatcher. */
     fun describeImage(imageBytes: ByteArray): String {
-        if (BuildConfig.GEMINI_API_KEY.isBlank()) {
-            return "No Gemini API key configured. Add GEMINI_API_KEY to local.properties and rebuild."
+        if (BuildConfig.GEMINI_PROXY_URL.isBlank()) {
+            return "No Gemini proxy configured. Add GEMINI_PROXY_URL to local.properties and rebuild."
         }
 
         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
@@ -28,44 +28,27 @@ object GeminiClient {
         val base64Image = Base64.encodeToString(downscaleAndCompress(bitmap), Base64.NO_WRAP)
 
         val requestBody = JSONObject().apply {
-            put("contents", JSONArray().put(JSONObject().apply {
-                put(
-                    "parts", JSONArray()
-                        .put(JSONObject().put("text", PROMPT))
-                        .put(JSONObject().put("inline_data", JSONObject().apply {
-                            put("mime_type", "image/jpeg")
-                            put("data", base64Image)
-                        }))
-                )
-            }))
+            put("mimeType", "image/jpeg")
+            put("data", base64Image)
         }
 
-        val url = URL(
-            "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
-        )
+        val url = URL(BuildConfig.GEMINI_PROXY_URL)
         val connection = url.openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = "POST"
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("X-App-Secret", BuildConfig.GEMINI_PROXY_APP_SECRET)
             connection.outputStream.use { it.write(requestBody.toString().toByteArray()) }
 
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
-            val responseText = stream.bufferedReader().use { it.readText() }
+            val responseJson = JSONObject(stream.bufferedReader().use { it.readText() })
 
             if (responseCode !in 200..299) {
-                return "Gemini request failed (code $responseCode): $responseText"
+                return responseJson.optString("error", "Request failed (code $responseCode)")
             }
-
-            JSONObject(responseText)
-                .getJSONArray("candidates")
-                .getJSONObject(0)
-                .getJSONObject("content")
-                .getJSONArray("parts")
-                .getJSONObject(0)
-                .getString("text")
-                .trim()
+            responseJson.optString("text", "No description returned.")
         } catch (e: Exception) {
             "Couldn't get info: ${e.message}"
         } finally {
