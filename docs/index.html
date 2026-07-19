@@ -117,15 +117,12 @@
   const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
   const FOLDER_ID = "1dg9otHHfIUfgUKzSZrTY8OALakA7n_ua";
 
-  // Any real key placed here is world-readable on GitHub Pages and gets
-  // auto-detected and revoked by Google's leaked-key scanning within hours —
-  // this happened to the previous key. Do not hardcode a working key again;
-  // see the project notes for the options being considered instead (proxy,
-  // or dropping Info from this public page).
-  const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
-  const GEMINI_MODEL = "gemini-flash-latest";
-  const GEMINI_PROMPT =
-    "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
+  // Gemini calls go through a small Cloudflare Worker proxy (see
+  // /cloudflare-worker) instead of hitting the Gemini API directly — the real
+  // key lives server-side as a Worker secret, never in this public HTML. A
+  // key hardcoded here previously got auto-detected and revoked by Google's
+  // leaked-key scanning within hours of being committed.
+  const GEMINI_PROXY_URL = "YOUR_WORKER_URL_HERE"; // e.g. https://photosync-gemini-proxy.<your-subdomain>.workers.dev
 
   const contentEl = document.getElementById("content");
   const infoCache = new Map();
@@ -325,29 +322,21 @@
   }
 
   async function describePhoto(fileId, mimeType) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+    if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL === "YOUR_WORKER_URL_HERE") {
       return "Info isn't configured for this page yet.";
     }
     try {
       const base64Image = await fetchImageAsBase64(fileId);
-      const body = {
-        contents: [{
-          parts: [
-            { text: GEMINI_PROMPT },
-            { inline_data: { mime_type: mimeType || "image/jpeg", data: base64Image } }
-          ]
-        }]
-      };
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-      );
+      const res = await fetch(GEMINI_PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: mimeType || "image/jpeg", data: base64Image }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        return `Gemini request failed (${res.status}): ${(data.error && data.error.message) || "unknown error"}`;
+        return data.error || `Request failed (${res.status})`;
       }
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      return text ? text.trim() : "No description returned.";
+      return data.text || "No description returned.";
     } catch (e) {
       return `Couldn't get info: ${e.message}`;
     }
