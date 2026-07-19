@@ -20,9 +20,6 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
 import com.johnvv.photosync.databinding.ActivityMainBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
 
 class MainActivity : AppCompatActivity() {
 
@@ -156,28 +153,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Shares the public PhotoSync browsing page (docs/index.html, view-only,
+     * no Drive UI or upload capability) rather than Drive's own folder link
+     * — that opened Drive's native web UI, letting anyone with the link
+     * upload files into the folder, which isn't what "share these photos"
+     * should mean here.
+     */
     private fun showFolderLink() {
-        val accountName = syncState.selectedAccountName ?: return
-        CoroutineScope(Dispatchers.IO).launch {
-            val drive = DriveServiceHelper(this@MainActivity, accountName)
-            val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().id.also {
-                syncState.rootFolderId = it
-            }
-            val link = drive.getWebViewLink(folderId)
-            runOnUiThread {
-                if (link != null) {
-                    val label = "Our Adventure"
-                    // HTML representation shows as a named hyperlink when pasted into a
-                    // rich-text-capable target (e.g. an HTML email body); the plain-text
-                    // fallback (name + raw URL together) is what SMS and other plain-text
-                    // targets receive instead, since a custom-labelled link isn't possible there.
-                    val clip = ClipData.newHtmlText(label, "$label: $link", "<a href=\"$link\">$label</a>")
-                    (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-                    binding.statusText.text = "\"$label\" link copied — paste it into a message or email."
-                } else {
-                    binding.statusText.text = "Folder created, but no link yet — open Drive and share it manually."
-                }
-            }
-        }
+        val label = "Our Adventure"
+        val url = "https://tinyurl.com/JVVMyPhotos"
+        // HTML representation shows as a named hyperlink when pasted into a
+        // rich-text-capable target (e.g. an HTML email body); the plain-text
+        // fallback (name + raw URL together) is what SMS and other plain-text
+        // targets receive instead, since a custom-labelled link isn't possible there.
+        val clip = ClipData.newHtmlText(label, "$label: $url", "<a href=\"$url\">$label</a>")
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+        binding.statusText.text = "\"$label\" link copied — paste it into a message or email."
     }
 }

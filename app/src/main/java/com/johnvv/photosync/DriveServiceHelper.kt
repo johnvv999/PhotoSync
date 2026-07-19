@@ -85,11 +85,6 @@ class DriveServiceHelper(context: Context, accountName: String) {
         return uploaded.id
     }
 
-    /** Returns the shareable webViewLink for a file/folder (folder must already be shared "anyone with the link"). */
-    fun getWebViewLink(fileId: String): String? {
-        return service.files().get(fileId).setFields("webViewLink").execute().webViewLink
-    }
-
     /** Lists the image files directly inside [folderId], oldest first. */
     fun listPhotosInFolder(folderId: String): List<DrivePhoto> {
         val result = service.files().list()
