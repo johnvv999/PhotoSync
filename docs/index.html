@@ -117,13 +117,12 @@
   const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
   const FOLDER_ID = "1dg9otHHfIUfgUKzSZrTY8OALakA7n_ua";
 
-  // Same Gemini API key as the Android app's local.properties (a classic key,
-  // not service-account-bound). Newly-created Gemini keys are now mandatorily
-  // bound to a service account, which requires an OAuth flow this static page
-  // can't use — so a domain-restricted key isn't achievable here. No billing
-  // account is attached to this project, so worst case if this leaks is the
-  // free-tier quota getting used up, not a charge.
-  const GEMINI_API_KEY = "AIzaSyB8AJNDjQdaCpKHLY7TMuvicaS0QfGXkoM";
+  // Any real key placed here is world-readable on GitHub Pages and gets
+  // auto-detected and revoked by Google's leaked-key scanning within hours —
+  // this happened to the previous key. Do not hardcode a working key again;
+  // see the project notes for the options being considered instead (proxy,
+  // or dropping Info from this public page).
+  const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
   const GEMINI_MODEL = "gemini-flash-latest";
   const GEMINI_PROMPT =
     "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
