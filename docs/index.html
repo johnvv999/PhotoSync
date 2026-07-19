@@ -272,6 +272,11 @@
 
     const gpsStart = tiffStart + gpsIfdOffset;
     const gpsCount = u16(gpsStart);
+    // A real GPS IFD has well under 20 entries — a much larger count means the
+    // offset landed somewhere wrong (e.g. truncated/misaligned data), so bail
+    // out rather than looping through garbage bytes that might coincidentally
+    // look like valid tags.
+    if (gpsCount > 32) return null;
     let lat = null, latRef = null, lon = null, lonRef = null;
 
     const readDms = (valueOffset) => {
@@ -296,6 +301,11 @@
     }
 
     if (lat == null || lon == null) return null;
+    // (0, 0) — "Null Island", open ocean off West Africa — is the standard
+    // signature of a parsing failure or an unset GPS field, not a real photo
+    // location. Real EXIF tooling conventionally rejects it rather than
+    // reporting a bogus location.
+    if (lat === 0 && lon === 0) return null;
     return { lat: latRef === "S" ? -lat : lat, lon: lonRef === "W" ? -lon : lon };
   }
 
