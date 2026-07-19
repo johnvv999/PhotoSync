@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         val accountName = syncState.selectedAccountName ?: return
         CoroutineScope(Dispatchers.IO).launch {
             val drive = DriveServiceHelper(this@MainActivity, accountName)
-            val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().also {
+            val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().id.also {
                 syncState.rootFolderId = it
             }
             val link = drive.getWebViewLink(folderId)

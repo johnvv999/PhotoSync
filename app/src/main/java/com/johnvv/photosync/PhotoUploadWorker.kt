@@ -47,10 +47,20 @@ class PhotoUploadWorker(
             ?: return@withContext Result.failure() // not signed in yet
 
         val drive = DriveServiceHelper(applicationContext, accountName)
+        val indexStore = LocationIndexStore(applicationContext)
+        val uploadedStore = UploadedPhotoStore(applicationContext)
         val rootFolderId = syncState.rootFolderId ?: try {
-            val id = drive.getOrCreateRootFolder()
-            syncState.rootFolderId = id
-            id
+            val result = drive.getOrCreateRootFolder()
+            syncState.rootFolderId = result.id
+            if (result.wasCreated) {
+                // A brand new Drive folder means any old "already uploaded" marks
+                // describe photos in a folder that no longer exists (e.g. the user
+                // deleted the previous PhotoSync folder) — they'd otherwise block
+                // every real photo from ever being (re-)uploaded to the new one.
+                Log.w(TAG, "Root folder recreated, clearing stale upload bookkeeping")
+                uploadedStore.clearAll()
+            }
+            result.id
         } catch (e: Exception) {
             // Transient network/auth hiccup setting up the Drive folder — retry
             // later rather than permanently failing (which Result.failure()
@@ -58,8 +68,6 @@ class PhotoUploadWorker(
             Log.w(TAG, "getOrCreateRootFolder failed, will retry", e)
             return@withContext Result.retry()
         }
-        val indexStore = LocationIndexStore(applicationContext)
-        val uploadedStore = UploadedPhotoStore(applicationContext)
 
         when (inputData.getString(KEY_MODE) ?: MODE_AUTO) {
             MODE_INDIVIDUAL -> {

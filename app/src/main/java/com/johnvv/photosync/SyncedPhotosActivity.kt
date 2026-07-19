@@ -37,7 +37,7 @@ class SyncedPhotosActivity : AppCompatActivity() {
             val drive = DriveServiceHelper(this@SyncedPhotosActivity, accountName)
             val photos = try {
                 withContext(Dispatchers.IO) {
-                    val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().also {
+                    val folderId = syncState.rootFolderId ?: drive.getOrCreateRootFolder().id.also {
                         syncState.rootFolderId = it
                     }
                     drive.listPhotosInFolder(folderId)

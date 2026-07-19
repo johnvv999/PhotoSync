@@ -16,4 +16,9 @@ class UploadedPhotoStore(context: Context) {
     fun markUploaded(photoId: Long) {
         prefs.edit().putBoolean(photoId.toString(), true).apply()
     }
+
+    /** Wipes all "already uploaded" bookkeeping — needed when the Drive root folder gets recreated, since the old marks no longer describe what's actually in Drive. */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
 }

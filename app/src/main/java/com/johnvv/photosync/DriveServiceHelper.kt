@@ -44,8 +44,14 @@ class DriveServiceHelper(context: Context, accountName: String) {
         ).setApplicationName("PhotoSync").build()
     }
 
-    /** Finds the PhotoSync root folder, creating it if it doesn't exist yet. Returns its file ID. */
-    fun getOrCreateRootFolder(): String {
+    /**
+     * Finds the PhotoSync root folder, creating it if it doesn't exist yet.
+     * [RootFolderResult.wasCreated] tells the caller whether this is a brand
+     * new, empty folder (as opposed to an existing one being reused) — that
+     * distinction matters for deciding whether old "already uploaded"
+     * bookkeeping is still valid.
+     */
+    fun getOrCreateRootFolder(): RootFolderResult {
         val query = "mimeType='$MIME_FOLDER' and name='$ROOT_FOLDER_NAME' " +
             "and trashed=false and 'root' in parents"
         val existing = service.files().list()
@@ -54,7 +60,7 @@ class DriveServiceHelper(context: Context, accountName: String) {
             .setFields("files(id, name)")
             .execute()
 
-        existing.files?.firstOrNull()?.let { return it.id }
+        existing.files?.firstOrNull()?.let { return RootFolderResult(it.id, wasCreated = false) }
 
         val folderMetadata = DriveFile().apply {
             name = ROOT_FOLDER_NAME
@@ -63,7 +69,7 @@ class DriveServiceHelper(context: Context, accountName: String) {
         val created = service.files().create(folderMetadata)
             .setFields("id")
             .execute()
-        return created.id
+        return RootFolderResult(created.id, wasCreated = true)
     }
 
     /** Uploads [inputStream] as [fileName] directly into [parentFolderId]. Returns the new file ID. */
@@ -147,6 +153,9 @@ class DriveServiceHelper(context: Context, accountName: String) {
         return get.executeMediaAsInputStream().use { it.readBytes() }
     }
 }
+
+/** Result of [DriveServiceHelper.getOrCreateRootFolder]. */
+data class RootFolderResult(val id: String, val wasCreated: Boolean)
 
 /** A single image file listed from a Drive folder. */
 data class DrivePhoto(
