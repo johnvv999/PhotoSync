@@ -28,17 +28,6 @@
         android:text="@string/sign_in_with_google" />
 
     <Button
-        android:id="@+id/syncNowButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/sync_now" />
-
-    <Button
         android:id="@+id/getLinkButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -48,6 +37,17 @@
         android:textStyle="bold"
         android:paddingVertical="14dp"
         android:text="@string/get_folder_link" />
+
+    <Button
+        android:id="@+id/syncNowButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/btn_3d"
+        android:textColor="@android:color/white"
+        android:textStyle="bold"
+        android:paddingVertical="14dp"
+        android:text="@string/sync_now" />
 
     <Button
         android:id="@+id/syncOptionsButton"
