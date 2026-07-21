@@ -1,7 +1,6 @@
 package com.johnvv.photosync
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Base64
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -22,7 +21,10 @@ object GeminiClient {
             return "No Gemini proxy configured. Add GEMINI_PROXY_URL to local.properties and rebuild."
         }
 
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        // Decode with EXIF orientation applied so Gemini sees the photo upright —
+        // otherwise a portrait photo's sideways raw pixels make it describe the
+        // image as "oriented sideways".
+        val bitmap = OrientedBitmap.decode(imageBytes)
             ?: return "Couldn't read this photo."
 
         val base64Image = Base64.encodeToString(downscaleAndCompress(bitmap), Base64.NO_WRAP)
