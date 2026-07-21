@@ -53,7 +53,7 @@ class SyncedPhotosActivity : AppCompatActivity() {
             } else {
                 binding.emptyText.visibility = View.GONE
                 val items = buildSyncedListItems(photos)
-                binding.photosList.adapter = DrivePhotoAdapter(this@SyncedPhotosActivity, items, drive, lifecycleScope)
+                binding.photosList.adapter = DrivePhotoAdapter(this@SyncedPhotosActivity, items, drive, lifecycleScope, accountName)
             }
         }
     }

@@ -26,7 +26,8 @@ class DrivePhotoAdapter(
     private val context: Context,
     private val items: List<SyncedListItem>,
     private val drive: DriveServiceHelper,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val accountName: String
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private companion object {
@@ -116,6 +117,10 @@ class DrivePhotoAdapter(
                 infoCache[photo.fileId] = description
                 holder.infoResult.text = description
             }
+        }
+
+        holder.thumbnail.setOnClickListener {
+            FullScreenPhotoActivity.start(context, photo.fileId, accountName)
         }
 
         val hasGps = photo.lat != null && photo.lon != null

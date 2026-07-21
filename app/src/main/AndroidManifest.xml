@@ -49,6 +49,10 @@
             android:exported="false"
             android:label="@string/map_link"
             android:theme="@style/Theme.PhotoSync" />
+        <activity
+            android:name=".FullScreenPhotoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PhotoSync" />
     </application>
 
 </manifest>
