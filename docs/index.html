@@ -185,7 +185,10 @@
   }
 
   function fetchImageAsBase64(fileId) {
-    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${DRIVE_API_KEY}`;
+    // Google's user-content CDN is CORS-friendly and auto-orients the image;
+    // the Drive API's ?alt=media download no longer allows browser fetch (CORS).
+    // =w1600 is plenty of detail for Gemini and far smaller than the original.
+    const url = `https://lh3.googleusercontent.com/d/${fileId}=w1600`;
     return fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
@@ -202,17 +205,18 @@
       );
   }
 
-  // Fetches just the first 128KB of the file — JPEG EXIF metadata always lives
-  // near the start, well before the compressed image data, so there's no need
-  // to download the whole photo just to check for a GPS tag. Capped at 10s so a
-  // slow/rate-limited request can't hang the whole page's location resolution.
+  // Downloads the original file (=d) from Google's CORS-friendly user-content
+  // CDN to read its EXIF GPS tag. The Drive API's ?alt=media download no longer
+  // permits browser fetch (CORS), and the CDN's resized variants strip EXIF, so
+  // the original is needed here. Capped at 10s so a slow request can't hang the
+  // whole page's location resolution.
   async function fetchImagePrefix(fileId) {
-    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${DRIVE_API_KEY}`;
+    const url = `https://lh3.googleusercontent.com/d/${fileId}=d`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch(url, { headers: { Range: "bytes=0-131071" }, signal: controller.signal });
-      if (!res.ok) throw new Error(`Drive download failed (HTTP ${res.status})`);
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
       return await res.arrayBuffer();
     } finally {
       clearTimeout(timeoutId);
