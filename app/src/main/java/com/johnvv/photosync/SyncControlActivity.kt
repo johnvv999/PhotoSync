@@ -159,7 +159,10 @@ class SyncControlActivity : AppCompatActivity() {
 
         WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
             when (info?.state) {
-                WorkInfo.State.SUCCEEDED -> binding.statusText.text = getString(R.string.sync_complete_status)
+                WorkInfo.State.SUCCEEDED -> {
+                    binding.statusText.text = getString(R.string.sync_complete_status)
+                    SyncedPhotosActivity.invalidateCache()
+                }
                 WorkInfo.State.FAILED -> binding.statusText.text = getString(R.string.sync_failed_status)
                 else -> {} // still enqueued/running — leave "Sync started…" showing
             }

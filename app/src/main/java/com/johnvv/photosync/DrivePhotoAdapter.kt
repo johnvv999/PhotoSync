@@ -33,11 +33,15 @@ class DrivePhotoAdapter(
     private companion object {
         const val VIEW_TYPE_HEADER = 0
         const val VIEW_TYPE_PHOTO = 1
+
+        // Kept at process level (not per-adapter) so decoded thumbnails and
+        // fetched Info survive this activity being recreated — e.g. when
+        // returning from the fullscreen photo view — and don't re-download.
+        val bytesCache = LruCache<String, ByteArray>(16)
+        val thumbnailCache = LruCache<String, Bitmap>(64)
+        val infoCache = mutableMapOf<String, String>()
     }
 
-    private val bytesCache = LruCache<String, ByteArray>(16)
-    private val thumbnailCache = LruCache<String, Bitmap>(64)
-    private val infoCache = mutableMapOf<String, String>()
     private val expandedIds = mutableSetOf<String>()
 
     class HeaderViewHolder(val titleView: TextView) : RecyclerView.ViewHolder(titleView)

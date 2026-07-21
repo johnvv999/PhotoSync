@@ -146,7 +146,10 @@ class MainActivity : AppCompatActivity() {
 
         WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
             when (info?.state) {
-                WorkInfo.State.SUCCEEDED -> binding.statusText.text = "Sync complete"
+                WorkInfo.State.SUCCEEDED -> {
+                    binding.statusText.text = "Sync complete"
+                    SyncedPhotosActivity.invalidateCache()
+                }
                 WorkInfo.State.FAILED -> binding.statusText.text = "Sync failed. Check connection and sign-in."
                 else -> {} // still enqueued/running — leave "Sync started…" showing
             }
