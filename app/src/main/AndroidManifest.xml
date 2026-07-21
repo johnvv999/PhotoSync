@@ -52,7 +52,8 @@
         <activity
             android:name=".FullScreenPhotoActivity"
             android:exported="false"
-            android:theme="@style/Theme.PhotoSync" />
+            android:theme="@style/Theme.PhotoSync"
+            android:screenOrientation="fullSensor" />
     </application>
 
 </manifest>

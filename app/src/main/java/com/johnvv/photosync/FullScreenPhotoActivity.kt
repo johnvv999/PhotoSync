@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,6 +41,14 @@ class FullScreenPhotoActivity : AppCompatActivity() {
         }
         setContentView(imageView)
         imageView.setOnClickListener { finish() }
+
+        // Hide the status/navigation bars for a true fullscreen photo view; a
+        // swipe from the screen edge still reveals them temporarily if needed.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, imageView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
 
         val fileId = intent.getStringExtra(EXTRA_FILE_ID) ?: return
         val accountName = intent.getStringExtra(EXTRA_ACCOUNT_NAME) ?: return
