@@ -2,7 +2,6 @@ package com.johnvv.photosync
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.util.LruCache
 import android.view.LayoutInflater
@@ -40,6 +39,11 @@ class DrivePhotoAdapter(
         val bytesCache = LruCache<String, ByteArray>(16)
         val thumbnailCache = LruCache<String, Bitmap>(64)
         val infoCache = mutableMapOf<String, String>()
+        // fileId -> resolved GPS: absent = not resolved yet, null = no GPS, else coords.
+        val gpsCache = mutableMapOf<String, DoubleArray?>()
+
+        val LINK_BLUE = Color.parseColor("#1A73E8")
+        val LINK_GREY = Color.parseColor("#6B6B70")
     }
 
     private val expandedIds = mutableSetOf<String>()
@@ -88,7 +92,7 @@ class DrivePhotoAdapter(
             holder.thumbnail.setImageDrawable(null)
             holder.thumbnailJob = scope.launch {
                 val bytes = withContext(Dispatchers.IO) { downloadBytes(photo.fileId) }
-                val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                val bitmap = bytes?.let { withContext(Dispatchers.Default) { OrientedBitmap.decode(it) } }
                 if (bitmap != null) {
                     thumbnailCache.put(photo.fileId, bitmap)
                     holder.thumbnail.setImageBitmap(bitmap)
@@ -127,12 +131,41 @@ class DrivePhotoAdapter(
             FullScreenPhotoActivity.start(context, photo.fileId, accountName)
         }
 
-        val hasGps = photo.lat != null && photo.lon != null
-        holder.mapLink.isEnabled = hasGps
-        holder.mapLink.setTextColor(if (hasGps) Color.parseColor("#1A73E8") else Color.parseColor("#6B6B70"))
-        holder.mapLink.setOnClickListener {
-            if (!hasGps) return@setOnClickListener
-            MapViewActivity.start(context, photo.lat!!, photo.lon!!)
+        bindMapLink(holder, photo)
+    }
+
+    /**
+     * The folder listing no longer downloads photo bytes (so it stays fast for
+     * large folders), which means GPS isn't known up front. Resolve it lazily
+     * here — cheaply, from just the EXIF header — and light up the Map link once
+     * known. Until then the link shows disabled/grey.
+     */
+    private fun bindMapLink(holder: PhotoViewHolder, photo: DrivePhoto) {
+        fun apply(coords: DoubleArray?) {
+            val hasGps = coords != null
+            holder.mapLink.isEnabled = hasGps
+            holder.mapLink.setTextColor(if (hasGps) LINK_BLUE else LINK_GREY)
+            holder.mapLink.setOnClickListener {
+                if (coords != null) MapViewActivity.start(context, coords[0], coords[1])
+            }
+        }
+
+        if (gpsCache.containsKey(photo.fileId)) {
+            apply(gpsCache[photo.fileId])
+            return
+        }
+        // Unknown yet: show disabled, then resolve in the background.
+        apply(null)
+        scope.launch {
+            val coords = withContext(Dispatchers.IO) { drive.readGpsCoords(photo.fileId) }
+            gpsCache[photo.fileId] = coords
+            // Only update if this holder is still bound to the same photo.
+            if (holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {
+                val current = items.getOrNull(holder.bindingAdapterPosition)
+                if (current is SyncedListItem.Photo && current.photo.fileId == photo.fileId) {
+                    apply(coords)
+                }
+            }
         }
     }
 

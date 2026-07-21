@@ -85,51 +85,52 @@ class DriveServiceHelper(context: Context, accountName: String) {
         return uploaded.id
     }
 
-    /** Lists the image files directly inside [folderId], oldest first. */
+    /**
+     * Lists the image files directly inside [folderId], oldest first. This must
+     * stay cheap — it does NOT download any photo bytes, so it returns fast even
+     * for large folders. City labels come from the app's "Country_City_NNN"
+     * filename convention; GPS coordinates (for the Map link) are resolved
+     * lazily by the adapter from the thumbnail bytes it already downloads.
+     */
     fun listPhotosInFolder(folderId: String): List<DrivePhoto> {
-        val result = service.files().list()
-            .setSpaces("drive")
-            .setFields("files(id, name, mimeType, parents, trashed, createdTime)")
-            .execute()
-        return result.files.orEmpty()
-            .filter { file ->
-                file.trashed != true &&
-                    file.mimeType?.startsWith("image/") == true &&
-                    folderId in file.parents.orEmpty()
-            }
+        val files = mutableListOf<DriveFile>()
+        var pageToken: String? = null
+        do {
+            val result = service.files().list()
+                .setQ("'$folderId' in parents and trashed=false and mimeType contains 'image/'")
+                .setSpaces("drive")
+                .setPageSize(1000)
+                .setPageToken(pageToken)
+                .setFields("nextPageToken, files(id, name, mimeType, createdTime)")
+                .execute()
+            files += result.files.orEmpty()
+            pageToken = result.nextPageToken
+        } while (pageToken != null)
+
+        return files
             .sortedBy { it.createdTime?.value ?: 0L }
             .map { file ->
                 val createdMs = file.createdTime?.value ?: 0L
-                val (cityLabel, latLong) = resolveCityLabelAndGps(file.id, file.name)
-                DrivePhoto(file.id, file.name, createdMs, cityLabel, latLong?.get(0), latLong?.get(1))
+                DrivePhoto(file.id, file.name, createdMs, cityLabelFromName(file.name))
             }
     }
 
-    /**
-     * City label plus raw GPS coordinates (if any) for a Drive photo. The city
-     * label is parsed from this app's own upload naming convention
-     * ("Country_City_NNN.ext") when possible; otherwise it's resolved from the
-     * photo's GPS EXIF, the same way [PhotoScanner.groupByCity] does for
-     * on-device photos. Either way, GPS coordinates are read from EXIF whenever
-     * present — even app-uploaded photos already have a resolved city name in
-     * their filename, but the Map link still needs the raw coordinates.
-     */
-    private fun resolveCityLabelAndGps(fileId: String, fileName: String): Pair<String, DoubleArray?> {
+    /** City label from the app's "Country_City_NNN.ext" upload convention, or a generic fallback. */
+    private fun cityLabelFromName(fileName: String): String {
         val parts = fileName.substringBeforeLast('.').split("_")
-        val nameLabel = if (parts.size >= 3) "${parts[1]}, ${parts[0]}" else null
+        return if (parts.size >= 3) "${parts[1]}, ${parts[0]}" else "Other Photos"
+    }
 
-        val latLong = try {
-            val bytes = downloadPhotoPrefix(fileId)
-            ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
-        } catch (e: Exception) {
-            null
-        }
-
-        if (nameLabel != null) return nameLabel to latLong
-
-        val location = latLong?.let { LocationNaming.reverseGeocode(appContext, it[0], it[1]) }
-        val cityLabel = location?.let { "${it.city}, ${it.country}" } ?: "No GPS Data"
-        return cityLabel to latLong
+    /**
+     * Reads just the GPS coordinates from a photo's EXIF, downloading only the
+     * small header prefix. Used by the adapter to lazily light up the Map link
+     * without blocking the initial folder listing.
+     */
+    fun readGpsCoords(fileId: String): DoubleArray? = try {
+        val bytes = downloadPhotoPrefix(fileId)
+        ByteArrayInputStream(bytes).use { LocationNaming.readLatLong(it) }
+    } catch (e: Exception) {
+        null
     }
 
     /** Downloads the raw bytes of [fileId]. */

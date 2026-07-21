@@ -2,7 +2,6 @@ package com.johnvv.photosync
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.ImageView
@@ -57,7 +56,7 @@ class FullScreenPhotoActivity : AppCompatActivity() {
             val bitmap = withContext(Dispatchers.IO) {
                 try {
                     val bytes = DriveServiceHelper(this@FullScreenPhotoActivity, accountName).downloadPhotoBytes(fileId)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    OrientedBitmap.decode(bytes)
                 } catch (e: Exception) {
                     null
                 }
