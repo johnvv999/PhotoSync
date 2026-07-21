@@ -23,6 +23,9 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
 import com.johnvv.photosync.databinding.ActivityMainBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -211,13 +214,44 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = "Sync started…"
 
         WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
-            when (info?.state) {
+            info ?: return@observe
+            val done = info.progress.getInt(PhotoUploadWorker.PROGRESS_DONE, -1)
+            val total = info.progress.getInt(PhotoUploadWorker.PROGRESS_TOTAL, -1)
+            when (info.state) {
+                WorkInfo.State.RUNNING -> if (total >= 0) {
+                    binding.statusText.text = getString(R.string.backing_up_progress, done, total)
+                }
                 WorkInfo.State.SUCCEEDED -> {
-                    binding.statusText.text = "Sync complete"
+                    binding.statusText.text = if (total > 0) {
+                        getString(R.string.backed_up_count, total)
+                    } else {
+                        getString(R.string.nothing_to_back_up)
+                    }
                     SyncedPhotosActivity.invalidateCache()
+                    updateStorageStats()
                 }
                 WorkInfo.State.FAILED -> binding.statusText.text = "Sync failed. Check connection and sign-in."
-                else -> {} // still enqueued/running — leave "Sync started…" showing
+                else -> {} // enqueued — leave "Sync started…" showing
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateStorageStats()
+    }
+
+    private fun updateStorageStats() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val s = StorageInfo.read(this@MainActivity)
+            runOnUiThread {
+                binding.storageText.text = getString(
+                    R.string.storage_line,
+                    s.photoCount,
+                    StorageInfo.formatBytes(s.photoBytes),
+                    StorageInfo.formatBytes(s.freeBytes),
+                    StorageInfo.formatBytes(s.totalBytes)
+                )
             }
         }
     }

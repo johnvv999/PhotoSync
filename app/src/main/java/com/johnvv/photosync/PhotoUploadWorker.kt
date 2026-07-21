@@ -41,6 +41,10 @@ class PhotoUploadWorker(
         const val KEY_PHOTO_IDS = "photo_ids" // comma-separated MediaStore _ID values
         const val KEY_FORCE_DUPLICATES = "force_duplicates" // individual mode: upload even if already synced
 
+        // Progress reported via setProgress so the UI can show "X of Y backed up".
+        const val PROGRESS_DONE = "progress_done"
+        const val PROGRESS_TOTAL = "progress_total"
+
         /**
          * Auto-sync never considers photos taken before this date, even if the
          * saved "last synced" mark is 0 (e.g. after a reinstall wiped app data).
@@ -138,17 +142,24 @@ class PhotoUploadWorker(
         forceDuplicates: Boolean = false
     ): Result {
         val resolver = applicationContext.contentResolver
-        for (entry in entries) {
-            // Excluded photos are never uploaded, even when duplicates are forced.
-            if (excludedStore.isExcluded(entry.id)) continue
-            if (!forceDuplicates && uploadedStore.isUploaded(entry.id)) continue
+        val toUpload = entries.filter { entry ->
+            !excludedStore.isExcluded(entry.id) && (forceDuplicates || !uploadedStore.isUploaded(entry.id))
+        }
+        var done = 0
+        reportProgress(done, toUpload.size)
+        for (entry in toUpload) {
             try {
                 uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, entry.id, entry.contentUri())
+                reportProgress(++done, toUpload.size)
             } catch (e: Exception) {
                 return handleUploadException(syncState, entry.id, e)
             }
         }
         return Result.success()
+    }
+
+    private fun reportProgress(done: Int, total: Int) {
+        setProgressAsync(androidx.work.workDataOf(PROGRESS_DONE to done, PROGRESS_TOTAL to total))
     }
 
     private fun uploadOne(
@@ -202,35 +213,45 @@ class PhotoUploadWorker(
             projection, selection, selectionArgs, sortOrder
         ) ?: return Result.retry()
 
+        // Snapshot the candidate rows so we know the total up front (for progress).
+        val candidates = mutableListOf<PhotoEntry>()
         cursor.use {
             val idCol = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val dateCol = it.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-
             while (it.moveToNext()) {
-                val id = it.getLong(idCol)
-                val dateAdded = it.getLong(dateCol)
-                val contentUri: Uri = Uri.withAppendedPath(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
-                )
+                candidates += PhotoEntry(it.getLong(idCol), it.getLong(dateCol) * 1000L)
+            }
+        }
 
-                if (uploadedStore.isUploaded(id) || excludedStore.isExcluded(id)) {
-                    // Already uploaded, or flagged never-upload — advance the cursor past it.
-                    maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
-                    syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
-                    continue
-                }
+        val total = candidates.count { !uploadedStore.isUploaded(it.id) && !excludedStore.isExcluded(it.id) }
+        var done = 0
+        reportProgress(done, total)
 
-                try {
-                    uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, id, contentUri)
-                    maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
-                    // Persist progress after each photo so a mid-batch failure doesn't
-                    // cause already-uploaded photos to be re-uploaded on retry.
-                    syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
-                } catch (e: Exception) {
-                    // Leave lastSyncedEpochSeconds where it is; this photo (and any
-                    // after it) will be retried on the next run.
-                    return handleUploadException(syncState, id, e)
-                }
+        for (entry in candidates) {
+            val id = entry.id
+            val dateAdded = entry.dateTakenMs / 1000L
+            val contentUri: Uri = Uri.withAppendedPath(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
+            )
+
+            if (uploadedStore.isUploaded(id) || excludedStore.isExcluded(id)) {
+                // Already uploaded, or flagged never-upload — advance the mark past it.
+                maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
+                syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
+                continue
+            }
+
+            try {
+                uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, id, contentUri)
+                reportProgress(++done, total)
+                maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
+                // Persist progress after each photo so a mid-batch failure doesn't
+                // cause already-uploaded photos to be re-uploaded on retry.
+                syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
+            } catch (e: Exception) {
+                // Leave lastSyncedEpochSeconds where it is; this photo (and any
+                // after it) will be retried on the next run.
+                return handleUploadException(syncState, id, e)
             }
         }
 

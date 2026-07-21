@@ -213,13 +213,23 @@ class SyncControlActivity : AppCompatActivity() {
         binding.statusText.text = getString(R.string.sync_started_status)
 
         WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
-            when (info?.state) {
+            info ?: return@observe
+            val done = info.progress.getInt(PhotoUploadWorker.PROGRESS_DONE, -1)
+            val total = info.progress.getInt(PhotoUploadWorker.PROGRESS_TOTAL, -1)
+            when (info.state) {
+                WorkInfo.State.RUNNING -> if (total >= 0) {
+                    binding.statusText.text = getString(R.string.backing_up_progress, done, total)
+                }
                 WorkInfo.State.SUCCEEDED -> {
-                    binding.statusText.text = getString(R.string.sync_complete_status)
+                    binding.statusText.text = if (total > 0) {
+                        getString(R.string.backed_up_count, total)
+                    } else {
+                        getString(R.string.nothing_to_back_up)
+                    }
                     SyncedPhotosActivity.invalidateCache()
                 }
                 WorkInfo.State.FAILED -> binding.statusText.text = getString(R.string.sync_failed_status)
-                else -> {} // still enqueued/running — leave "Sync started…" showing
+                else -> {} // enqueued — leave "Sync started…" showing
             }
         }
     }

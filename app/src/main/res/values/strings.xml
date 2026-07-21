@@ -47,4 +47,8 @@
     <string name="shared_folder_cleared">Back to this account\'s own folder.</string>
     <string name="invalid_folder_link">Couldn\'t find a folder ID in that link. Paste the full Drive folder link.</string>
     <string name="use_own_folder">Use my own folder</string>
+    <string name="storage_line">%1$d photos using %2$s • %3$s free of %4$s</string>
+    <string name="backing_up_progress">Backing up %1$d of %2$d…</string>
+    <string name="backed_up_count">Sync complete — backed up %1$d photo(s).</string>
+    <string name="nothing_to_back_up">Sync complete — nothing new to back up.</string>
 </resources>
