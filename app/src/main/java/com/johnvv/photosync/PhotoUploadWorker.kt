@@ -112,7 +112,10 @@ class PhotoUploadWorker(
      * attempt recreate the folder via getOrCreateRootFolder().
      */
     private fun handleUploadException(syncState: SyncState, id: Long, e: Exception): Result {
-        if (e is GoogleJsonResponseException && e.statusCode == 404) {
+        if (e is GoogleJsonResponseException && e.statusCode == 404 && !syncState.usingSharedFolder) {
+            // Only auto-recreate folders this app owns. A 404 on a shared folder
+            // means access/permission trouble, not a deleted own-folder — silently
+            // making a new private folder would split the sync.
             Log.w(TAG, "Upload failed for photo id=$id: root folder missing on Drive, recreating", e)
             syncState.rootFolderId = null
         } else {

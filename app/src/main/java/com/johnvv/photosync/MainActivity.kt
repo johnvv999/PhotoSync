@@ -3,10 +3,13 @@ package com.johnvv.photosync
 import android.Manifest
 import android.accounts.AccountManager
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.widget.EditText
+import android.widget.Toast
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
@@ -115,6 +118,55 @@ class MainActivity : AppCompatActivity() {
         binding.browseSyncedButton.setOnClickListener {
             startActivity(Intent(this, SyncedPhotosActivity::class.java))
         }
+
+        binding.useSharedFolderButton.setOnClickListener {
+            showSharedFolderDialog()
+        }
+    }
+
+    /**
+     * Lets this phone sync into a Drive folder shared from another account
+     * (e.g. so two phones on different accounts share one folder) instead of
+     * creating its own. The user pastes the folder's share link; we store the
+     * extracted folder ID as the sync target.
+     */
+    private fun showSharedFolderDialog() {
+        val input = EditText(this).apply {
+            hint = getString(R.string.shared_folder_hint)
+            if (syncState.usingSharedFolder) setText(syncState.rootFolderId.orEmpty())
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.shared_folder_title)
+            .setMessage(R.string.shared_folder_message)
+            .setView(input)
+            .setPositiveButton(R.string.use_shared_folder) { _, _ ->
+                val folderId = extractFolderId(input.text.toString())
+                if (folderId == null) {
+                    Toast.makeText(this, R.string.invalid_folder_link, Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                syncState.rootFolderId = folderId
+                syncState.usingSharedFolder = true
+                SyncedPhotosActivity.invalidateCache()
+                binding.statusText.text = getString(R.string.shared_folder_set)
+            }
+            .setNeutralButton(R.string.use_own_folder) { _, _ ->
+                syncState.rootFolderId = null
+                syncState.usingSharedFolder = false
+                SyncedPhotosActivity.invalidateCache()
+                binding.statusText.text = getString(R.string.shared_folder_cleared)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Pulls the folder ID out of a Drive folder link, or accepts a bare ID. */
+    private fun extractFolderId(input: String): String? {
+        val trimmed = input.trim()
+        Regex("/folders/([a-zA-Z0-9_-]+)").find(trimmed)?.let { return it.groupValues[1] }
+        // A bare folder ID: Drive IDs are long alphanumeric strings with - and _.
+        if (trimmed.matches(Regex("[a-zA-Z0-9_-]{20,}"))) return trimmed
+        return null
     }
 
     /**

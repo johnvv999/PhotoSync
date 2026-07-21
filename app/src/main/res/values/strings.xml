@@ -39,4 +39,12 @@
     <string name="duplicate_upload_anyway">Upload anyway</string>
     <string name="duplicate_skip">Skip duplicates</string>
     <string name="all_selected_already_synced">All selected photos are already synced — nothing new to upload.</string>
+    <string name="use_shared_folder">Use Shared Folder</string>
+    <string name="shared_folder_title">Use a shared Drive folder</string>
+    <string name="shared_folder_message">Paste the Google Drive folder link (or folder ID) that was shared with this account. This phone will sync into that folder instead of its own.</string>
+    <string name="shared_folder_hint">Drive folder link or ID</string>
+    <string name="shared_folder_set">Now syncing into the shared folder.</string>
+    <string name="shared_folder_cleared">Back to this account\'s own folder.</string>
+    <string name="invalid_folder_link">Couldn\'t find a folder ID in that link. Paste the full Drive folder link.</string>
+    <string name="use_own_folder">Use my own folder</string>
 </resources>

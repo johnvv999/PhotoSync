@@ -1,74 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center"
-    android:background="@drawable/bg_clouds">
+    android:background="@drawable/bg_clouds"
+    android:fillViewport="true">
 
-    <TextView
-        android:id="@+id/statusText"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="#0D3B66"
-        android:layout_marginBottom="24dp"
-        android:text="@string/status_not_signed_in" />
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center">
 
-    <Button
-        android:id="@+id/signInButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/sign_in_with_google" />
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#0D3B66"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            android:text="@string/status_not_signed_in" />
 
-    <Button
-        android:id="@+id/getLinkButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/get_folder_link" />
+        <Button
+            android:id="@+id/signInButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/sign_in_with_google" />
 
-    <Button
-        android:id="@+id/syncNowButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/sync_now" />
+        <Button
+            android:id="@+id/getLinkButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/get_folder_link" />
 
-    <Button
-        android:id="@+id/syncOptionsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/sync_options" />
+        <Button
+            android:id="@+id/syncNowButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/sync_now" />
 
-    <Button
-        android:id="@+id/browseSyncedButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:background="@drawable/btn_3d"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        android:paddingVertical="14dp"
-        android:text="@string/browse_synced_photos" />
+        <Button
+            android:id="@+id/syncOptionsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/sync_options" />
 
-</LinearLayout>
+        <Button
+            android:id="@+id/browseSyncedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/browse_synced_photos" />
+
+        <Button
+            android:id="@+id/useSharedFolderButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="14dp"
+            android:text="@string/use_shared_folder" />
+
+    </LinearLayout>
+
+</ScrollView>

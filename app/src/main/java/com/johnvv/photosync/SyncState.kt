@@ -33,4 +33,14 @@ class SyncState(context: Context) {
     var runawaySyncCleared: Boolean
         get() = prefs.getBoolean("runaway_sync_cleared", false)
         set(value) = prefs.edit().putBoolean("runaway_sync_cleared", value).apply()
+
+    /**
+     * True when [rootFolderId] points at a folder shared from another account,
+     * rather than one this app created. In that case the app must never
+     * auto-create or recreate a folder (e.g. on a transient error) — doing so
+     * would silently split the sync back into a private folder.
+     */
+    var usingSharedFolder: Boolean
+        get() = prefs.getBoolean("using_shared_folder", false)
+        set(value) = prefs.edit().putBoolean("using_shared_folder", value).apply()
 }
