@@ -147,9 +147,15 @@ export default {
       return json({ error: "Invalid JSON body" }, 400, headers);
     }
 
-    const { mimeType, data } = body;
+    const { mimeType, data, lat, lon } = body;
     if (!data || typeof data !== "string") {
       return json({ error: "Missing image data" }, 400, headers);
+    }
+
+    // Optional GPS from the caller lets Gemini pin the actual location/landmark.
+    let prompt = GEMINI_PROMPT;
+    if (typeof lat === "number" && typeof lon === "number") {
+      prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
     }
 
     let accessToken;
@@ -162,7 +168,7 @@ export default {
     const geminiBody = {
       contents: [{
         parts: [
-          { text: GEMINI_PROMPT },
+          { text: prompt },
           { inline_data: { mime_type: mimeType || "image/jpeg", data } },
         ],
       }],

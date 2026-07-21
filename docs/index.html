@@ -331,10 +331,17 @@
     }
     try {
       const base64Image = await fetchImageAsBase64(fileId);
+      const payload = { mimeType: mimeType || "image/jpeg", data: base64Image };
+      // Include GPS (if we've resolved it) so Gemini can pin the actual location.
+      const gps = await getGpsForPhoto(fileId);
+      if (gps.ok && gps.coords) {
+        payload.lat = gps.coords.lat;
+        payload.lon = gps.coords.lon;
+      }
       const res = await fetch(GEMINI_PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType: mimeType || "image/jpeg", data: base64Image }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {

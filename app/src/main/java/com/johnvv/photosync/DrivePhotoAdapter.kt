@@ -118,7 +118,14 @@ class DrivePhotoAdapter(
             holder.infoJob = scope.launch {
                 val bytes = withContext(Dispatchers.IO) { downloadBytes(photo.fileId) }
                 val description = if (bytes != null) {
-                    withContext(Dispatchers.IO) { GeminiClient.describeImage(bytes) }
+                    // Resolve GPS (cached) so Gemini can pin the actual location.
+                    val coords = gpsCache[photo.fileId]
+                        ?: withContext(Dispatchers.IO) { drive.readGpsCoords(photo.fileId) }.also {
+                            gpsCache[photo.fileId] = it
+                        }
+                    withContext(Dispatchers.IO) {
+                        GeminiClient.describeImage(bytes, coords?.get(0), coords?.get(1))
+                    }
                 } else {
                     context.getString(R.string.couldnt_load_photo)
                 }

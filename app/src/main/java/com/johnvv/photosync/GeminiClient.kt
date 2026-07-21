@@ -16,7 +16,7 @@ import java.net.URL
 object GeminiClient {
 
     /** Blocking network call — run this from a background dispatcher. */
-    fun describeImage(imageBytes: ByteArray): String {
+    fun describeImage(imageBytes: ByteArray, lat: Double? = null, lon: Double? = null): String {
         if (BuildConfig.GEMINI_PROXY_URL.isBlank()) {
             return "No Gemini proxy configured. Add GEMINI_PROXY_URL to local.properties and rebuild."
         }
@@ -32,6 +32,11 @@ object GeminiClient {
         val requestBody = JSONObject().apply {
             put("mimeType", "image/jpeg")
             put("data", base64Image)
+            // Include GPS (if known) so Gemini can pin the actual location.
+            if (lat != null && lon != null) {
+                put("lat", lat)
+                put("lon", lon)
+            }
         }
 
         val url = URL(BuildConfig.GEMINI_PROXY_URL)
