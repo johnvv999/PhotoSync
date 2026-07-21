@@ -29,4 +29,14 @@
     <string name="map_link">Map</string>
     <string name="return_button">Return</string>
     <string name="couldnt_load_synced_photos">Couldn\'t load photos from Drive. Check your connection and try again.</string>
+    <string name="badge_synced">Synced</string>
+    <string name="badge_excluded">Excluded</string>
+    <string name="exclude_hint">Long-press a photo to exclude it from uploading; long-press again to allow it.</string>
+    <string name="photo_excluded_toast">Photo excluded — it will never be uploaded.</string>
+    <string name="photo_unexcluded_toast">Photo no longer excluded.</string>
+    <string name="duplicate_dialog_title">Some photos are already synced</string>
+    <string name="duplicate_dialog_message">%1$d of the selected photos are already in your Drive folder. Upload them again anyway, or skip them?</string>
+    <string name="duplicate_upload_anyway">Upload anyway</string>
+    <string name="duplicate_skip">Skip duplicates</string>
+    <string name="all_selected_already_synced">All selected photos are already synced — nothing new to upload.</string>
 </resources>

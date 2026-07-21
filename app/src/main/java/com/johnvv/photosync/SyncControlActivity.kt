@@ -1,5 +1,6 @@
 package com.johnvv.photosync
 
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.os.Bundle
 import android.view.View
@@ -32,6 +33,9 @@ class SyncControlActivity : AppCompatActivity() {
 
     private val selectedCityKeys = mutableSetOf<String>()
     private val selectedPhotoIds = mutableSetOf<Long>()
+
+    private val uploadedStore by lazy { UploadedPhotoStore(this) }
+    private val excludedStore by lazy { ExcludedPhotoStore(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +92,9 @@ class SyncControlActivity : AppCompatActivity() {
         selectedCityKeys.clear()
         selectedPhotoIds.clear()
         binding.resultsList.adapter = null
-        binding.statusText.text = ""
+
+        val isIndividual = binding.modeGroup.checkedRadioButtonId == R.id.modeIndividual
+        binding.statusText.text = if (isIndividual) getString(R.string.exclude_hint) else ""
 
         val needsScan = binding.modeGroup.checkedRadioButtonId != R.id.modeAll
         binding.scanButton.visibility = if (needsScan) View.VISIBLE else View.GONE
@@ -113,9 +119,13 @@ class SyncControlActivity : AppCompatActivity() {
                 binding.statusText.text = if (cities.isEmpty()) getString(R.string.no_photos_found) else ""
             } else {
                 binding.resultsList.layoutManager = GridLayoutManager(this@SyncControlActivity, 3)
-                binding.resultsList.adapter =
-                    PhotoGridAdapter(this@SyncControlActivity, photos, selectedPhotoIds, lifecycleScope)
-                binding.statusText.text = if (photos.isEmpty()) getString(R.string.no_photos_found) else ""
+                binding.resultsList.adapter = PhotoGridAdapter(
+                    this@SyncControlActivity, photos, selectedPhotoIds, lifecycleScope, uploadedStore, excludedStore
+                )
+                binding.statusText.text = when {
+                    photos.isEmpty() -> getString(R.string.no_photos_found)
+                    else -> getString(R.string.exclude_hint)
+                }
             }
             binding.resultsList.visibility = View.VISIBLE
             binding.scanButton.isEnabled = true
@@ -142,17 +152,62 @@ class SyncControlActivity : AppCompatActivity() {
             }
 
             else -> {
-                if (selectedPhotoIds.isEmpty()) {
-                    binding.statusText.text = getString(R.string.select_at_least_one)
-                    return
-                }
-                Data.Builder()
-                    .putString(PhotoUploadWorker.KEY_MODE, PhotoUploadWorker.MODE_INDIVIDUAL)
-                    .putString(PhotoUploadWorker.KEY_PHOTO_IDS, selectedPhotoIds.joinToString(","))
-                    .build()
+                startIndividualSync()
+                return
             }
         }
 
+        enqueueSync(data)
+    }
+
+    /**
+     * Individual mode needs a pre-submit check: excluded photos are dropped
+     * silently, and if any remaining selections are already synced, the user
+     * is asked whether to skip those duplicates or upload them again.
+     */
+    private fun startIndividualSync() {
+        val selectable = selectedPhotoIds.filterNot { excludedStore.isExcluded(it) }
+        if (selectable.isEmpty()) {
+            binding.statusText.text = getString(R.string.select_at_least_one)
+            return
+        }
+
+        val alreadySynced = selectable.filter { uploadedStore.isUploaded(it) }
+        if (alreadySynced.isEmpty()) {
+            enqueueIndividual(selectable)
+            return
+        }
+
+        val newOnes = selectable.filterNot { uploadedStore.isUploaded(it) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.duplicate_dialog_title)
+            .setMessage(getString(R.string.duplicate_dialog_message, alreadySynced.size))
+            .setPositiveButton(R.string.duplicate_upload_anyway) { _, _ ->
+                // forceDuplicates tells the worker to skip its "already uploaded"
+                // guard for this batch (excluded photos are still never uploaded).
+                enqueueIndividual(selectable, forceDuplicates = true)
+            }
+            .setNegativeButton(R.string.duplicate_skip) { _, _ ->
+                if (newOnes.isEmpty()) {
+                    binding.statusText.text = getString(R.string.all_selected_already_synced)
+                } else {
+                    enqueueIndividual(newOnes)
+                }
+            }
+            .setNeutralButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun enqueueIndividual(ids: List<Long>, forceDuplicates: Boolean = false) {
+        val data = Data.Builder()
+            .putString(PhotoUploadWorker.KEY_MODE, PhotoUploadWorker.MODE_INDIVIDUAL)
+            .putString(PhotoUploadWorker.KEY_PHOTO_IDS, ids.joinToString(","))
+            .putBoolean(PhotoUploadWorker.KEY_FORCE_DUPLICATES, forceDuplicates)
+            .build()
+        enqueueSync(data)
+    }
+
+    private fun enqueueSync(data: Data) {
         val request = OneTimeWorkRequestBuilder<PhotoUploadWorker>().setInputData(data).build()
         WorkManager.getInstance(this).enqueue(request)
         binding.statusText.text = getString(R.string.sync_started_status)

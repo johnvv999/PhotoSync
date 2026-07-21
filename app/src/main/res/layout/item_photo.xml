@@ -12,6 +12,28 @@
         android:background="#DDDDDD"
         android:contentDescription="@null" />
 
+    <!-- Shown dimmed over the thumbnail when the photo is flagged never-upload. -->
+    <View
+        android:id="@+id/excludedOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B3000000"
+        android:visibility="gone" />
+
+    <!-- "Synced" / "Excluded" status badge, top-start. -->
+    <TextView
+        android:id="@+id/statusBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="4dp"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:textColor="@android:color/white"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <CheckBox
         android:id="@+id/photoCheckBox"
         android:layout_width="wrap_content"
