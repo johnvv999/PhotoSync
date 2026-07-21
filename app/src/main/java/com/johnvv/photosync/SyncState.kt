@@ -28,4 +28,9 @@ class SyncState(context: Context) {
     var driveAccountAuthorized: Boolean
         get() = prefs.getBoolean("drive_account_authorized", false)
         set(value) = prefs.edit().putBoolean("drive_account_authorized", value).apply()
+
+    /** One-time guard so the app cancels any leftover runaway sync work exactly once. */
+    var runawaySyncCleared: Boolean
+        get() = prefs.getBoolean("runaway_sync_cleared", false)
+        set(value) = prefs.edit().putBoolean("runaway_sync_cleared", value).apply()
 }

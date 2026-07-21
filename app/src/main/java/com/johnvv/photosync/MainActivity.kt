@@ -65,6 +65,20 @@ class MainActivity : AppCompatActivity() {
 
         syncState = SyncState(this)
 
+        // Never let a stale/zeroed "last synced" mark send auto-sync through the
+        // whole camera roll: floor it to the same date the worker enforces.
+        if (syncState.lastSyncedEpochSeconds < PhotoUploadWorker.AUTO_SYNC_FLOOR_EPOCH_SECONDS) {
+            syncState.lastSyncedEpochSeconds = PhotoUploadWorker.AUTO_SYNC_FLOOR_EPOCH_SECONDS
+        }
+
+        // One-time cleanup: an earlier build could start a runaway full-camera-roll
+        // upload that survived restarts. Cancel any leftover work exactly once so
+        // opening this build stops it; normal syncs enqueue fresh afterwards.
+        if (!syncState.runawaySyncCleared) {
+            WorkManager.getInstance(this).cancelAllWork()
+            syncState.runawaySyncCleared = true
+        }
+
         val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
             .requestScopes(Scope(DriveScopes.DRIVE_FILE), Scope(DriveScopes.DRIVE_READONLY))

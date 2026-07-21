@@ -39,6 +39,17 @@ class PhotoUploadWorker(
         const val KEY_END_EPOCH_MS = "end_epoch_ms"
         const val KEY_CITY_KEYS = "city_keys" // comma-separated PhotoLocation.key() values
         const val KEY_PHOTO_IDS = "photo_ids" // comma-separated MediaStore _ID values
+        const val KEY_FORCE_DUPLICATES = "force_duplicates" // individual mode: upload even if already synced
+
+        /**
+         * Auto-sync never considers photos taken before this date, even if the
+         * saved "last synced" mark is 0 (e.g. after a reinstall wiped app data).
+         * Without this floor a reset would crawl the user's entire camera roll.
+         */
+        val AUTO_SYNC_FLOOR_EPOCH_SECONDS: Long = java.util.Calendar.getInstance().apply {
+            set(2026, java.util.Calendar.JULY, 16, 0, 0, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis / 1000
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -49,6 +60,7 @@ class PhotoUploadWorker(
         val drive = DriveServiceHelper(applicationContext, accountName)
         val indexStore = LocationIndexStore(applicationContext)
         val uploadedStore = UploadedPhotoStore(applicationContext)
+        val excludedStore = ExcludedPhotoStore(applicationContext)
         val rootFolderId = syncState.rootFolderId ?: try {
             val result = drive.getOrCreateRootFolder()
             syncState.rootFolderId = result.id
@@ -73,7 +85,8 @@ class PhotoUploadWorker(
             MODE_INDIVIDUAL -> {
                 val ids = inputData.getString(KEY_PHOTO_IDS).orEmpty()
                     .split(",").filter { it.isNotBlank() }.map { it.toLong() }
-                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, ids.map { PhotoEntry(it, 0L) })
+                val forceDuplicates = inputData.getBoolean(KEY_FORCE_DUPLICATES, false)
+                uploadEntries(syncState, drive, indexStore, uploadedStore, excludedStore, rootFolderId, ids.map { PhotoEntry(it, 0L) }, forceDuplicates)
             }
             MODE_CITY -> {
                 val cityKeys = inputData.getString(KEY_CITY_KEYS).orEmpty()
@@ -82,13 +95,13 @@ class PhotoUploadWorker(
                 val matching = PhotoScanner.groupByCity(applicationContext, photos)
                     .filter { it.locationKey in cityKeys }
                     .flatMap { it.photos }
-                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, matching)
+                uploadEntries(syncState, drive, indexStore, uploadedStore, excludedStore, rootFolderId, matching)
             }
             MODE_ALL -> {
                 val photos = PhotoScanner.queryPhotos(applicationContext, startEpochMs(), endEpochMs())
-                uploadEntries(syncState, drive, indexStore, uploadedStore, rootFolderId, photos)
+                uploadEntries(syncState, drive, indexStore, uploadedStore, excludedStore, rootFolderId, photos)
             }
-            else -> runAutoSync(syncState, drive, indexStore, uploadedStore, rootFolderId)
+            else -> runAutoSync(syncState, drive, indexStore, uploadedStore, excludedStore, rootFolderId)
         }
     }
 
@@ -116,12 +129,16 @@ class PhotoUploadWorker(
         drive: DriveServiceHelper,
         indexStore: LocationIndexStore,
         uploadedStore: UploadedPhotoStore,
+        excludedStore: ExcludedPhotoStore,
         rootFolderId: String,
-        entries: List<PhotoEntry>
+        entries: List<PhotoEntry>,
+        forceDuplicates: Boolean = false
     ): Result {
         val resolver = applicationContext.contentResolver
         for (entry in entries) {
-            if (uploadedStore.isUploaded(entry.id)) continue
+            // Excluded photos are never uploaded, even when duplicates are forced.
+            if (excludedStore.isExcluded(entry.id)) continue
+            if (!forceDuplicates && uploadedStore.isUploaded(entry.id)) continue
             try {
                 uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, entry.id, entry.contentUri())
             } catch (e: Exception) {
@@ -160,9 +177,15 @@ class PhotoUploadWorker(
         drive: DriveServiceHelper,
         indexStore: LocationIndexStore,
         uploadedStore: UploadedPhotoStore,
+        excludedStore: ExcludedPhotoStore,
         rootFolderId: String
     ): Result {
-        val sinceEpochSeconds = syncState.lastSyncedEpochSeconds
+        // Clamp forward to the floor so a reset/zeroed mark can't drag the whole
+        // historical camera roll into the upload set.
+        val sinceEpochSeconds = maxOf(syncState.lastSyncedEpochSeconds, AUTO_SYNC_FLOOR_EPOCH_SECONDS)
+        if (sinceEpochSeconds != syncState.lastSyncedEpochSeconds) {
+            syncState.lastSyncedEpochSeconds = sinceEpochSeconds
+        }
         var maxProcessedEpochSeconds = sinceEpochSeconds
 
         val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
@@ -187,8 +210,8 @@ class PhotoUploadWorker(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
                 )
 
-                if (uploadedStore.isUploaded(id)) {
-                    // Already uploaded via a manual sync mode — just advance the cursor past it.
+                if (uploadedStore.isUploaded(id) || excludedStore.isExcluded(id)) {
+                    // Already uploaded, or flagged never-upload — advance the cursor past it.
                     maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
                     syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
                     continue
