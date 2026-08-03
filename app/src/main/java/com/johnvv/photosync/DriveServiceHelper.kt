@@ -230,6 +230,23 @@ class DriveServiceHelper(context: Context, accountName: String) {
     }
 
     /**
+     * Replaces the bytes of an existing [fileId], keeping its id, name, parents
+     * and createdTime. Used to write a location into a photo whose EXIF has none.
+     *
+     * Distinct from [updatePhotoNameAndOrder], which sends metadata only and so
+     * cannot alter a photo's pixels or EXIF — renaming must never disturb what a
+     * photo says about itself.
+     */
+    fun updatePhotoContent(fileId: String, inputStream: InputStream, takenTimeMs: Long?) {
+        val metadata = DriveFile()
+        // Without this the rewrite would stamp the file as modified today.
+        takenTimeMs?.takeIf { it > 0 }?.let { metadata.modifiedTime = DateTime(it) }
+        val content = com.google.api.client.http.InputStreamContent("image/jpeg", inputStream)
+        service.files().update(fileId, metadata, content).setFields("id").execute()
+        downloadCache.remove(fileId)
+    }
+
+    /**
      * Moves [fileId] to Drive's trash rather than destroying it. A mis-flagged
      * "redundant" photo is then still recoverable from drive.google.com for the
      * usual 30 days, while disappearing from the PhotoSync folder immediately —

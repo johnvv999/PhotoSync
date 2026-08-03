@@ -146,6 +146,15 @@ class EditPhotosFragment : Fragment() {
                 return@launch
             }
 
+            // An empty folder isn't a successful no-op worth reporting as one:
+            // "renamed 0 photo(s), 0 took the location of an earlier photo" reads
+            // like the pass failed, when really there is nothing here yet.
+            if (result.photos.isEmpty()) {
+                binding.statusText.text = getString(R.string.no_synced_photos)
+                setButtonsEnabled(true)
+                return@launch
+            }
+
             photos = result.photos
             // Renaming changes each photo's stated location, and the AI descriptions
             // mention it — drop them so Info re-fetches against the corrected place.
@@ -155,6 +164,9 @@ class EditPhotosFragment : Fragment() {
             showEditList()
             binding.statusText.text = buildString {
                 append(getString(R.string.fix_complete, result.renamed, result.locationsInherited))
+                if (result.coordsStamped > 0) {
+                    append(" ").append(getString(R.string.fix_coords_stamped, result.coordsStamped))
+                }
                 if (result.skipped > 0) append(" ").append(getString(R.string.fix_skipped, result.skipped))
                 // The inheritance rule needs at least one located photo to copy
                 // from. If every photo in the folder lacks GPS there is nothing to

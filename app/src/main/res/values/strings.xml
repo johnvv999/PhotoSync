@@ -80,6 +80,7 @@
     <string name="fixing_progress">Fixing %1$d of %2$d…</string>
     <string name="fix_complete">Done — renamed %1$d photo(s), %2$d took the location of an earlier photo.</string>
     <string name="fix_skipped">%1$d couldn\'t be changed (not uploaded by this app).</string>
+    <string name="fix_coords_stamped">%1$d had GPS copied in from an earlier photo, so their Map links work now.</string>
     <string name="fix_still_unlocated">%1$d are still unlocated — they come before the first photo that has a location.</string>
     <string name="fix_no_source_location">None of the %1$d photos on Drive has GPS to copy from, so there\'s nothing to inherit. Re-sync some photos (this build now uploads GPS correctly), or type a location in below.</string>
     <string name="no_folder_yet">No Drive folder loaded yet — sign in on the Settings tab, then reopen this tab.</string>
