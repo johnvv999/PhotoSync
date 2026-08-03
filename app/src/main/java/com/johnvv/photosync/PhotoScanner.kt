@@ -52,10 +52,18 @@ object PhotoScanner {
         return entries
     }
 
-    /** Resolves each photo's GPS-derived city and groups them. Runs one geocode per photo — call off the main thread. */
+    /**
+     * Resolves each photo's GPS-derived city and groups them, ordered
+     * alphabetically by country and then by city. Runs one geocode per photo —
+     * call off the main thread.
+     *
+     * The groups are built in the order photos are encountered (newest first),
+     * which puts the picker's checkboxes in an order that reads as arbitrary;
+     * sorting them means every city of a country sits together.
+     */
     fun groupByCity(context: Context, photos: List<PhotoEntry>): List<CityGroup> {
         val resolver = context.contentResolver
-        val groups = LinkedHashMap<String, Pair<String, MutableList<PhotoEntry>>>()
+        val groups = LinkedHashMap<String, Pair<PhotoLocation, MutableList<PhotoEntry>>>()
         for (photo in photos) {
             // Unredacted, or the GPS tag won't be there to group by — see OriginalMedia.
             val location = OriginalMedia.open(resolver, photo.contentUri())?.use { stream ->
@@ -64,9 +72,16 @@ object PhotoScanner {
                 LocationNaming.reverseGeocode(context, latLong[0], latLong[1])
             } ?: PhotoLocation(city = "NoGPS", country = "Unsorted")
 
-            val display = "${location.city}, ${location.country}"
-            groups.getOrPut(location.key()) { display to mutableListOf() }.second += photo
+            groups.getOrPut(location.key()) { location to mutableListOf() }.second += photo
         }
-        return groups.map { (key, pair) -> CityGroup(key, pair.first, pair.second) }
+        // The map key is only ever location.key(), so it can be recomputed and the
+        // sort works off the values alone.
+        return groups.values
+            // lowercase() (Locale.ROOT) rather than a case-insensitive comparator:
+            // it keeps the ordering deterministic regardless of device locale.
+            .sortedWith(compareBy({ it.first.country.lowercase() }, { it.first.city.lowercase() }))
+            .map { (location, entries) ->
+                CityGroup(location.key(), LocationNaming.displayLabel(location), entries)
+            }
     }
 }

@@ -158,6 +158,17 @@ object LocationNaming {
         return ParsedName(PhotoLocation(city = parts[1], country = parts[0]), index, extension)
     }
 
+    /**
+     * True when [fileName] carries no real place — either it isn't in the naming
+     * scheme at all, or it holds the placeholder tokens. These are exactly the
+     * photos that display under "Other Photos", and the two must stay in
+     * agreement.
+     */
+    fun isUnlocated(fileName: String): Boolean {
+        val parsed = parseFileName(fileName) ?: return true
+        return isPlaceholder(parsed.location)
+    }
+
     /** How a location is shown to the user, matching the browse screen's "City, Country" headers. */
     fun displayLabel(location: PhotoLocation): String = "${location.city}, ${location.country}"
 

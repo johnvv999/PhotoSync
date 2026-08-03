@@ -315,7 +315,20 @@ class EditPhotosFragment : Fragment() {
         val drive = this.drive ?: return
         val account = accountName ?: return
         showingRedundant = false
-        val items = buildSyncedListItems(photos)
+
+        // Photos with no real location float to the top. They're the ones this
+        // screen exists to fix, and after a Fix Locations pass they're whatever
+        // the inheritance couldn't reach — so burying them mid-list, in whatever
+        // order they happened to be taken, hides the only rows needing a hand.
+        // Everything else stays chronological beneath them.
+        val ordered = photos.sortedWith(
+            compareBy(
+                { if (LocationNaming.isUnlocated(it.name)) 0 else 1 },
+                { it.chronoTimeMs },
+                { it.name }
+            )
+        )
+        val items = buildSyncedListItems(ordered)
         val adapter = editAdapter
         if (adapter != null && binding.photosList.adapter === adapter) {
             adapter.submit(items)
