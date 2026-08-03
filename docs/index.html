@@ -115,7 +115,13 @@
   // to this page's HTTP referrer (e.g. "https://<username>.github.io/*"), so a
   // leaked key can only ever list/read files that are already publicly shared.
   const DRIVE_API_KEY = "AIzaSyC8O4kNQlCV0br64HsWZJmm9MnhxD-wPQ8";
-  const FOLDER_ID = "1dg9otHHfIUfgUKzSZrTY8OALakA7n_ua";
+  // Must match the folder the Android app is syncing into. The app can be
+  // repointed at any time via Settings -> Use Shared Folder, and this constant
+  // does not follow it — when the two drift apart the page silently displays a
+  // folder nothing is writing to any more, which looks exactly like stale
+  // caching. The app's current value lives in its root_folder_id preference.
+  // Previous folder, kept as a reference: 1dg9otHHfIUfgUKzSZrTY8OALakA7n_ua
+  const FOLDER_ID = "1FI2DP8Un2DBqhSx2cl_DVc9dDhBgpOMA";
 
   // Gemini calls go through a small Cloudflare Worker proxy (see
   // /cloudflare-worker) instead of hitting the Gemini API directly — the real
