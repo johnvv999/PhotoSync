@@ -68,4 +68,39 @@
         android:layout_weight="1"
         android:layout_marginTop="12dp" />
 
+    <!-- Shown only while photos are being picked for deletion, on either list. -->
+    <LinearLayout
+        android:id="@+id/deleteBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:baselineAligned="false"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/deleteButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="12dp"
+            android:text="@string/delete_button" />
+
+        <Button
+            android:id="@+id/cancelButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:paddingVertical="12dp"
+            android:text="@string/cancel_button" />
+
+    </LinearLayout>
+
 </LinearLayout>

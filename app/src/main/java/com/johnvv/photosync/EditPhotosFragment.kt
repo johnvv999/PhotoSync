@@ -36,11 +36,22 @@ class EditPhotosFragment : Fragment() {
     private var photos: List<DrivePhoto> = emptyList()
     private var editAdapter: EditPhotoAdapter? = null
 
-    /** File IDs ticked in the redundant-photo results, awaiting Delete Selected. */
+    /** File IDs ticked for deletion, shared with whichever adapter is showing. */
     private val selectedForDeletion = mutableSetOf<String>()
 
-    /** True while the redundant-photo results are showing instead of the edit list. */
-    private var showingRedundant = false
+    /** What the list is currently for. */
+    private enum class Mode {
+        /** Reading and editing locations; no tick boxes, no delete bar. */
+        BROWSE,
+
+        /** Every photo tickable, so any of them can be deleted. */
+        PICK_ANY,
+
+        /** Only the photos the duplicate scan grouped, tickable. */
+        PICK_REDUNDANT
+    }
+
+    private var mode = Mode.BROWSE
 
     /**
      * Listing the folder is a network round trip, so it waits until this tab is
@@ -63,7 +74,37 @@ class EditPhotosFragment : Fragment() {
         binding.photosList.layoutManager = LinearLayoutManager(requireContext())
         binding.fixLocationsButton.setOnClickListener { fixLocations() }
         binding.findRedundantButton.setOnClickListener { findRedundant() }
-        binding.deleteSelectedButton.setOnClickListener { confirmDelete() }
+        binding.deleteSelectedButton.setOnClickListener { startPickingAnyPhoto() }
+        binding.deleteButton.setOnClickListener { confirmDelete() }
+        binding.cancelButton.setOnClickListener { cancelPicking() }
+    }
+
+    /**
+     * Turns the ordinary photo list into a picker so any photo can be deleted,
+     * not just ones the duplicate scan flagged.
+     */
+    private fun startPickingAnyPhoto() {
+        if (photos.isEmpty()) {
+            binding.statusText.text = getString(R.string.no_synced_photos)
+            return
+        }
+        selectedForDeletion.clear()
+        mode = Mode.PICK_ANY
+        showEditList()
+        updateSelectionStatus()
+    }
+
+    /** Leaves either picker without deleting anything. */
+    private fun cancelPicking() {
+        selectedForDeletion.clear()
+        mode = Mode.BROWSE
+        showEditList()
+        binding.statusText.text = getString(R.string.edit_photo_count, photos.size)
+    }
+
+    /** The delete bar belongs to the two picking modes and nothing else. */
+    private fun applyMode() {
+        binding.deleteBar.visibility = if (mode == Mode.BROWSE) View.GONE else View.VISIBLE
     }
 
     override fun onResume() {
@@ -135,6 +176,13 @@ class EditPhotosFragment : Fragment() {
             binding.statusText.text = getString(R.string.no_folder_yet)
             return
         }
+        // Leave any picking mode first: renaming rebuilds the list, and carrying
+        // ticks and a Delete bar through an unrelated operation invites deleting
+        // something chosen for a reason that no longer applies.
+        selectedForDeletion.clear()
+        mode = Mode.BROWSE
+        applyMode()
+
         setButtonsEnabled(false)
         binding.statusText.text = getString(R.string.fixing_locations)
 
@@ -230,7 +278,7 @@ class EditPhotosFragment : Fragment() {
         val drive = this.drive ?: return
         val account = accountName ?: return
         if (photos.size < 2) {
-            binding.statusText.text = getString(R.string.not_enough_photos_to_compare)
+            binding.statusText.text = getString(R.string.not_enough_photos_to_compare_n, photos.size)
             return
         }
         setButtonsEnabled(false)
@@ -248,13 +296,18 @@ class EditPhotosFragment : Fragment() {
             }
 
             if (groups.isEmpty()) {
-                binding.statusText.text = getString(R.string.no_redundant_found)
+                // Say how many were examined. "No redundant photos found" alone is
+                // indistinguishable from the button having done nothing, which is
+                // exactly how it reads after a long silent scan.
+                binding.statusText.text = getString(R.string.no_redundant_found, photos.size)
                 showEditList()
                 setButtonsEnabled(true)
                 return@launch
             }
 
-            showingRedundant = true
+            mode = Mode.PICK_REDUNDANT
+            applyMode()
+            editAdapter = null // the redundant list replaces it; rebuild on the way back
             val items = buildRedundantListItems(groups, selectedForDeletion)
             binding.photosList.adapter = RedundantPhotoAdapter(
                 requireContext(), items, drive, viewLifecycleOwner.lifecycleScope, account, selectedForDeletion
@@ -265,16 +318,18 @@ class EditPhotosFragment : Fragment() {
     }
 
     private fun updateSelectionStatus(groupCount: Int? = null) {
-        binding.statusText.text = if (groupCount != null) {
-            getString(R.string.redundant_found, groupCount, selectedForDeletion.size)
-        } else {
-            getString(R.string.redundant_selected, selectedForDeletion.size)
+        binding.statusText.text = when {
+            groupCount != null ->
+                getString(R.string.redundant_found, groupCount, selectedForDeletion.size)
+            mode == Mode.PICK_ANY ->
+                getString(R.string.pick_any_selected, selectedForDeletion.size, photos.size)
+            else -> getString(R.string.redundant_selected, selectedForDeletion.size)
         }
     }
 
     private fun confirmDelete() {
-        if (!showingRedundant || selectedForDeletion.isEmpty()) {
-            binding.statusText.text = getString(R.string.nothing_selected_to_delete)
+        if (selectedForDeletion.isEmpty()) {
+            binding.statusText.text = getString(R.string.nothing_ticked_to_delete)
             return
         }
         AlertDialog.Builder(requireContext())
@@ -313,7 +368,8 @@ class EditPhotosFragment : Fragment() {
             }
 
             selectedForDeletion.clear()
-            showingRedundant = false
+            mode = Mode.BROWSE
+            applyMode()
             SyncedPhotosActivity.invalidateCache()
 
             // Re-read the folder rather than editing the local list: a partial
@@ -331,7 +387,8 @@ class EditPhotosFragment : Fragment() {
     private fun showEditList() {
         val drive = this.drive ?: return
         val account = accountName ?: return
-        showingRedundant = false
+        if (mode == Mode.PICK_REDUNDANT) mode = Mode.BROWSE
+        applyMode()
 
         // Photos with no real location float to the top. They're the ones this
         // screen exists to fix, and after a Fix Locations pass they're whatever
@@ -348,13 +405,16 @@ class EditPhotosFragment : Fragment() {
         val items = buildSyncedListItems(ordered) { photo ->
             LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL
         }
+        val selectable = mode == Mode.PICK_ANY
         val adapter = editAdapter
         if (adapter != null && binding.photosList.adapter === adapter) {
+            adapter.selectionMode = selectable
             adapter.submit(items)
         } else {
             editAdapter = EditPhotoAdapter(
-                requireContext(), items, drive, viewLifecycleOwner.lifecycleScope, account
-            ) { photo, label -> editLocation(photo, label) }
+                requireContext(), items, drive, viewLifecycleOwner.lifecycleScope, account,
+                selectedForDeletion, { updateSelectionStatus() }
+            ) { photo, label -> editLocation(photo, label) }.also { it.selectionMode = selectable }
             binding.photosList.adapter = editAdapter
         }
     }

@@ -74,10 +74,17 @@ object DuplicateFinder {
         }
 
         val clusters = cluster(photos.filter { it.fileId in hashes }, hashes)
+        Log.i(
+            TAG,
+            "Compared ${photos.size} photo(s): hashed ${hashes.size}, " +
+                "${photos.size - hashes.size} unreadable, found ${clusters.size} similar group(s)"
+        )
         if (clusters.isEmpty()) return emptyList()
 
         onStage("ai")
-        return clusters.mapNotNull { cluster -> judge(drive, cluster) }
+        val groups = clusters.mapNotNull { cluster -> judge(drive, cluster) }
+        Log.i(TAG, "Returning ${groups.size} group(s) after AI review")
+        return groups
     }
 
     /**

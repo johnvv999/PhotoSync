@@ -2,55 +2,57 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingVertical="6dp"
-    android:baselineAligned="false">
+    android:orientation="vertical"
+    android:paddingBottom="16dp">
 
-    <CheckBox
-        android:id="@+id/selectCheck"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content" />
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="220dp">
 
-    <ImageView
-        android:id="@+id/thumbnail"
-        android:layout_width="96dp"
-        android:layout_height="96dp"
-        android:layout_marginStart="4dp"
-        android:scaleType="centerCrop"
-        android:background="#DDDDDD"
-        android:contentDescription="@null" />
+        <ImageView
+            android:id="@+id/thumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:background="#DDDDDD"
+            android:contentDescription="@null" />
 
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_weight="1"
+        <!-- Same placement as the edit list, so ticking a photo works the same
+             way whichever list you are looking at. -->
+        <CheckBox
+            android:id="@+id/selectCheck"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="8dp"
+            android:paddingHorizontal="6dp"
+            android:background="#C8FFFFFF" />
+
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/fileNameText"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:orientation="vertical">
+        android:layout_marginTop="6dp"
+        android:paddingHorizontal="4dp"
+        android:textSize="14sp"
+        android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/fileNameText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+    <TextView
+        android:id="@+id/takenTimeText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="4dp"
+        android:textSize="12sp"
+        android:textColor="#5F6368" />
 
-        <TextView
-            android:id="@+id/takenTimeText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textSize="12sp"
-            android:textColor="#5F6368" />
-
-        <TextView
-            android:id="@+id/verdictText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-    </LinearLayout>
+    <TextView
+        android:id="@+id/verdictText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="4dp"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
 </LinearLayout>

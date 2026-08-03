@@ -150,8 +150,15 @@ class RedundantPhotoAdapter(
             }
         }
 
+        // Tapping the photo toggles it, matching the edit list. Fullscreen is
+        // still reachable by long-press, since comparing near-identical shots is
+        // exactly when you want a closer look before ticking one.
         holder.thumbnail.setOnClickListener {
+            holder.check.isChecked = !holder.check.isChecked
+        }
+        holder.thumbnail.setOnLongClickListener {
             FullScreenPhotoActivity.start(context, photo.fileId, accountName)
+            true
         }
     }
 

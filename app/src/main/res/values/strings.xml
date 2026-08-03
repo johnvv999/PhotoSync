@@ -92,11 +92,11 @@
 
     <!-- Redundant photos -->
     <string name="find_redundant">Find Redundant</string>
-    <string name="not_enough_photos_to_compare">Need at least two photos to compare.</string>
     <string name="scanning_for_duplicates">Looking for similar photos…</string>
     <string name="comparing_progress">Comparing %1$d of %2$d…</string>
     <string name="asking_ai">Asking AI which ones are redundant…</string>
-    <string name="no_redundant_found">No redundant photos found.</string>
+    <string name="no_redundant_found">Compared %1$d photos — no redundant ones found. Nothing to delete.</string>
+    <string name="not_enough_photos_to_compare_n">Only %1$d photo here — need at least two to compare.</string>
     <string name="redundant_found">Found %1$d group(s) of similar photos — %2$d selected to delete.</string>
     <string name="redundant_selected">%1$d selected to delete.</string>
     <string name="redundant_group_title">Group %1$d — %2$d similar photos</string>
@@ -106,7 +106,10 @@
 
     <!-- Deleting -->
     <string name="delete_selected">Delete Selected</string>
-    <string name="nothing_selected_to_delete">Nothing selected. Run Find Redundant, then tick the photos to delete.</string>
+    <string name="delete_button">Delete</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="nothing_ticked_to_delete">No photos ticked. Tick the box on a photo, then tap Delete.</string>
+    <string name="pick_any_selected">%1$d of %2$d photos ticked. Tick any photo, then tap Delete — or Cancel to stop.</string>
     <string name="delete_dialog_title">Delete from Google Drive?</string>
     <string name="delete_dialog_message">%1$d photo(s) will be moved to your Google Drive trash, where they can still be recovered for 30 days.</string>
     <string name="delete_confirm">Delete</string>

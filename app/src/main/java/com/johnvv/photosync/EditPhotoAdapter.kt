@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
@@ -27,9 +28,20 @@ class EditPhotoAdapter(
     private val drive: DriveServiceHelper,
     private val scope: CoroutineScope,
     private val accountName: String,
-    /** Invoked with the photo and the typed "City, Country" when Save is tapped. */
+    /** Ticked photos, shared with the fragment so Delete acts on the same set. */
+    private val selection: MutableSet<String>,
+    private val onSelectionChanged: () -> Unit,
+    /** Invoked with the photo and the typed "Country, City" when Save is tapped. */
     private val onLocationEdited: (DrivePhoto, String) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    /** When true every photo shows a tick box and tapping one selects rather than opens it. */
+    var selectionMode: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
 
     private companion object {
         const val VIEW_TYPE_HEADER = 0
@@ -42,6 +54,7 @@ class EditPhotoAdapter(
 
     class PhotoViewHolder(root: View) : RecyclerView.ViewHolder(root) {
         val thumbnail: ImageView = root.findViewById(R.id.thumbnail)
+        val selectCheck: CheckBox = root.findViewById(R.id.selectCheck)
         val fileNameText: TextView = root.findViewById(R.id.fileNameText)
         val locationInput: EditText = root.findViewById(R.id.locationInput)
         val saveLocationButton: Button = root.findViewById(R.id.saveLocationButton)
@@ -109,11 +122,35 @@ class EditPhotoAdapter(
             onLocationEdited(photo, holder.locationInput.text.toString())
         }
 
-        holder.thumbnail.setOnClickListener {
-            FullScreenPhotoActivity.start(context, photo.fileId, accountName)
+        bindSelection(holder, photo)
+        bindInfoLink(holder, photo)
+    }
+
+    /**
+     * Wires the tick box and decides what tapping the photo does. In selection
+     * mode the whole thumbnail toggles the box — a checkbox in the corner of a
+     * photo is a small target, and tapping through to fullscreen when you meant
+     * to select is a poor surprise.
+     */
+    private fun bindSelection(holder: PhotoViewHolder, photo: DrivePhoto) {
+        holder.selectCheck.visibility = if (selectionMode) View.VISIBLE else View.GONE
+
+        // Detached before setting the state, so recycling a row into a different
+        // photo can't fire a change that edits the wrong selection.
+        holder.selectCheck.setOnCheckedChangeListener(null)
+        holder.selectCheck.isChecked = photo.fileId in selection
+        holder.selectCheck.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) selection += photo.fileId else selection -= photo.fileId
+            onSelectionChanged()
         }
 
-        bindInfoLink(holder, photo)
+        holder.thumbnail.setOnClickListener {
+            if (selectionMode) {
+                holder.selectCheck.isChecked = !holder.selectCheck.isChecked
+            } else {
+                FullScreenPhotoActivity.start(context, photo.fileId, accountName)
+            }
+        }
     }
 
     private fun bindInfoLink(holder: PhotoViewHolder, photo: DrivePhoto) {
