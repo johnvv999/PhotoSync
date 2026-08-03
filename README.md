@@ -103,6 +103,15 @@ added to the folder some other way are listed but reported as skipped.
   Without it Android 10+ hands back a copy with the GPS tags stripped — even
   with `ACCESS_MEDIA_LOCATION` granted — so every photo would name itself
   `Unsorted_NoGPS`, and the stripped bytes would be what reached Drive.
+- Motion photos are slimmed before upload. Samsung Motion Photo (and Google's
+  equivalent) is one JPEG with a few seconds of MP4 appended after the image's
+  end-of-image marker — the still at the front is already the final frame, so
+  dropping the trailer loses nothing visible and typically cuts an 8–15 MB file
+  to 3–4 MB. Only the Drive copy is trimmed; the phone keeps its video.
+  `MotionPhoto` walks the JPEG's marker structure rather than searching for the
+  last `FFD9`, since the appended video contains those bytes itself, and the
+  trimmed result must end on the EOI marker, report the original's dimensions
+  and actually decode before it's used — otherwise the untouched bytes go up.
 - Each Drive file is backdated to the photo's EXIF capture time. Drive
   otherwise stamps `createdTime` with the moment of upload, so a library synced
   in one go shows up dated today everywhere that reads file dates instead of

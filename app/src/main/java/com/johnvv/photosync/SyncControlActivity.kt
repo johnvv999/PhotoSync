@@ -232,10 +232,12 @@ class SyncControlActivity : AppCompatActivity() {
         endEpochMs?.let { builder.putLong(PhotoUploadWorker.KEY_END_EPOCH_MS, it) }
     }
 
-    private fun minStartDateEpochMs(): Long = Calendar.getInstance().apply {
-        set(2026, Calendar.JULY, 16, 0, 0, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+    /**
+     * Taken from the worker rather than restated here: the same date was
+     * previously written out in both files, so changing one silently left the
+     * picker offering dates the sync would ignore.
+     */
+    private fun minStartDateEpochMs(): Long = PhotoUploadWorker.AUTO_SYNC_FLOOR_EPOCH_MS
 
     private fun todayEndEpochMs(): Long = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 23)

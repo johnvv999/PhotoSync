@@ -10,6 +10,7 @@ import androidx.work.WorkerParameters
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 
 private const val TAG = "PhotoUploadWorker"
 
@@ -79,14 +80,19 @@ class PhotoUploadWorker(
         const val TAG_UPLOAD = "photosync_upload"
 
         /**
-         * Auto-sync never considers photos taken before this date, even if the
-         * saved "last synced" mark is 0 (e.g. after a reinstall wiped app data).
-         * Without this floor a reset would crawl the user's entire camera roll.
+         * The earliest date the app considers at all. Auto-sync never looks
+         * before it even if the saved "last synced" mark is 0 (e.g. after a
+         * reinstall wiped app data) — without the floor a reset would crawl the
+         * user's entire camera roll — and it is also the default and minimum on
+         * the manual date pickers, which read it from here so the two can't
+         * drift apart.
          */
-        val AUTO_SYNC_FLOOR_EPOCH_SECONDS: Long = java.util.Calendar.getInstance().apply {
-            set(2026, java.util.Calendar.JULY, 16, 0, 0, 0)
+        val AUTO_SYNC_FLOOR_EPOCH_MS: Long = java.util.Calendar.getInstance().apply {
+            set(2026, java.util.Calendar.JULY, 23, 0, 0, 0)
             set(java.util.Calendar.MILLISECOND, 0)
-        }.timeInMillis / 1000
+        }.timeInMillis
+
+        val AUTO_SYNC_FLOOR_EPOCH_SECONDS: Long = AUTO_SYNC_FLOOR_EPOCH_MS / 1000
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -357,18 +363,25 @@ class PhotoUploadWorker(
         val index = indexStore.nextIndex(location.key())
         val fileName = LocationNaming.buildFileName(location, index)
 
+        // OriginalMedia is what keeps the photo's GPS from being stripped in
+        // transit; a redacted upload loses it for good, since the Drive copy is
+        // then the only one the Edit screen can ever see.
+        val original = OriginalMedia.open(resolver, contentUri)?.use { it.readBytes() } ?: return
+
+        // Motion photos carry several seconds of video after the image data.
+        // Dropping it costs nothing visible — the still is already the final
+        // frame — and typically cuts the upload to a third of its size. Falls
+        // back to the untouched bytes whenever the trim can't be verified.
+        val body = MotionPhoto.stripTrailingVideo(original) ?: original
+
         val stamp = candidate.coordsToStamp
         if (stamp == null) {
-            // The photo carries its own fix already — upload the original bytes
-            // untouched. OriginalMedia is what keeps that fix from being stripped
-            // in transit; a redacted upload loses it for good, since the Drive
-            // copy is then the only one the Edit screen can ever see.
-            OriginalMedia.open(resolver, contentUri)?.use { uploadStream ->
+            ByteArrayInputStream(body).use { uploadStream ->
                 drive.uploadPhoto(uploadStream, fileName, rootFolderId, candidate.takenMs)
             }
         } else {
             uploadWithStampedGps(
-                resolver, drive, contentUri, fileName, rootFolderId,
+                drive, body, fileName, rootFolderId,
                 candidate.entry.id, stamp, candidate.takenMs
             )
         }
@@ -382,9 +395,8 @@ class PhotoUploadWorker(
      * stream — so the bytes go through the cache directory on the way.
      */
     private fun uploadWithStampedGps(
-        resolver: ContentResolver,
         drive: DriveServiceHelper,
-        contentUri: Uri,
+        body: ByteArray,
         fileName: String,
         rootFolderId: String,
         photoId: Long,
@@ -393,9 +405,7 @@ class PhotoUploadWorker(
     ) {
         val temp = java.io.File(applicationContext.cacheDir, "photosync_stamp_$photoId.jpg")
         try {
-            OriginalMedia.open(resolver, contentUri)?.use { input ->
-                temp.outputStream().use { output -> input.copyTo(output) }
-            } ?: return
+            temp.outputStream().use { it.write(body) }
             // Best effort: if the format can't take an EXIF rewrite the photo
             // still uploads, just without a fix of its own.
             LocationNaming.writeLatLong(temp, coords[0], coords[1])
