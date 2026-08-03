@@ -84,9 +84,9 @@
     <string name="fix_still_unlocated">%1$d are still unlocated — they come before the first photo that has a location.</string>
     <string name="fix_no_source_location">None of the %1$d photos on Drive has GPS to copy from, so there\'s nothing to inherit. Re-sync some photos (this build now uploads GPS correctly), or type a location in below.</string>
     <string name="no_folder_yet">No Drive folder loaded yet — sign in on the Settings tab, then reopen this tab.</string>
-    <string name="location_hint">City, Country</string>
+    <string name="location_hint">Country, City</string>
     <string name="save_location">Save</string>
-    <string name="location_empty">Type a location first, e.g. \"Paris, France\".</string>
+    <string name="location_empty">Type a location first, e.g. \"France, Paris\".</string>
     <string name="renamed_to">Renamed to %1$s</string>
     <string name="rename_failed">Couldn\'t rename %1$s — Drive wouldn\'t allow it.</string>
 

@@ -98,6 +98,7 @@ class SettingsFragment : Fragment() {
         binding.getLinkButton.setOnClickListener { showFolderLink() }
         binding.useSharedFolderButton.setOnClickListener { showSharedFolderDialog() }
         binding.reuploadButton.setOnClickListener { confirmReupload() }
+        binding.returnButton.setOnClickListener { (activity as? MainActivity)?.showSyncTab() }
     }
 
     /**

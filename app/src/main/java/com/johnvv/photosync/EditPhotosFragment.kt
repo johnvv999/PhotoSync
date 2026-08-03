@@ -21,6 +21,11 @@ import kotlinx.coroutines.withContext
  */
 class EditPhotosFragment : Fragment() {
 
+    private companion object {
+        /** Heading for photos whose name carries no real place; matches DriveServiceHelper's fallback. */
+        const val OTHER_PHOTOS_LABEL = "Other Photos"
+    }
+
     private var _binding: FragmentEditPhotosBinding? = null
     private val binding get() = _binding!!
 
@@ -195,7 +200,7 @@ class EditPhotosFragment : Fragment() {
             ?.takeUnless { LocationNaming.isPlaceholder(it) }
             ?.country
             ?: "Unknown"
-        val location = LocationNaming.fromDisplayLabel(typedLabel, existingCountry)
+        val location = LocationNaming.fromCountryFirstLabel(typedLabel, existingCountry)
         if (location == null) {
             Toast.makeText(requireContext(), R.string.location_empty, Toast.LENGTH_SHORT).show()
             return
@@ -340,7 +345,9 @@ class EditPhotosFragment : Fragment() {
                 { it.name }
             )
         )
-        val items = buildSyncedListItems(ordered)
+        val items = buildSyncedListItems(ordered) { photo ->
+            LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL
+        }
         val adapter = editAdapter
         if (adapter != null && binding.photosList.adapter === adapter) {
             adapter.submit(items)

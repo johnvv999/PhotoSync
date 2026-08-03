@@ -66,6 +66,14 @@ class MainActivity : AppCompatActivity() {
         }.attach()
     }
 
+    /**
+     * Brings the Sync tab forward. The tabs are pages of one activity, so a
+     * "return" from a tab is a page change here rather than finishing anything.
+     */
+    fun showSyncTab() {
+        binding.pager.currentItem = Tab.SYNC.ordinal
+    }
+
     private fun requestNeededPermissions() {
         val perms = mutableListOf(Manifest.permission.ACCESS_MEDIA_LOCATION, Manifest.permission.GET_ACCOUNTS)
         perms.add(

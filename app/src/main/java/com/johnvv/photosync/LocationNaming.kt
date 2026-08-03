@@ -173,18 +173,30 @@ object LocationNaming {
     fun displayLabel(location: PhotoLocation): String = "${location.city}, ${location.country}"
 
     /**
-     * Turns a user-typed "City, Country" back into a [PhotoLocation]. Typing
-     * just a city (no comma) keeps the country the photo already had, so
-     * correcting a misgeocoded city doesn't silently blank out the country.
+     * "Country, City" for the Edit screen, or null when [fileName] carries no
+     * real place — those show as "Other Photos".
+     *
+     * Country leads here because the Edit screen is for putting a library in
+     * order, where every city of a country belongs together; the browse screen
+     * keeps city first, since there you already know where you were.
      */
-    fun fromDisplayLabel(text: String, fallbackCountry: String): PhotoLocation? {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return null
-        val parts = trimmed.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    fun countryFirstLabel(fileName: String): String? =
+        parseFileName(fileName)?.location
+            ?.takeUnless { isPlaceholder(it) }
+            ?.let { "${it.country}, ${it.city}" }
+
+    /**
+     * Reads back what the Edit screen's location field displays — "Country,
+     * City". A single word is taken as the city, keeping [fallbackCountry],
+     * since correcting a misgeocoded city is the common edit.
+     */
+    fun fromCountryFirstLabel(text: String, fallbackCountry: String): PhotoLocation? {
+        val parts = text.trim().split(",").map { it.trim() }.filter { it.isNotEmpty() }
         return when {
             parts.isEmpty() -> null
             parts.size == 1 -> PhotoLocation(city = parts[0], country = fallbackCountry)
-            else -> PhotoLocation(city = parts[0], country = parts[1])
+            else -> PhotoLocation(city = parts[1], country = parts[0])
         }
     }
+
 }

@@ -142,11 +142,13 @@ class EditPhotoAdapter(
         }
     }
 
-    /** The photo's location as "City, Country", or null if its name carries no real place. */
+    /**
+     * The photo's location as "Country, City", matching this screen's headings —
+     * and the order [LocationNaming.fromCountryFirstLabel] reads back when Save
+     * is tapped. Null if its name carries no real place.
+     */
     private fun realPlaceLabel(photo: DrivePhoto): String? =
-        LocationNaming.parseFileName(photo.name)?.location
-            ?.takeUnless { LocationNaming.isPlaceholder(it) }
-            ?.let { LocationNaming.displayLabel(it) }
+        LocationNaming.countryFirstLabel(photo.name)
 
     override fun getItemCount() = items.size
 }
