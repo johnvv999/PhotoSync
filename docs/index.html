@@ -129,10 +129,22 @@
   const gpsCache = new Map();
 
   /** Parses "Country_City" from this app's own upload naming convention, or null if it doesn't match. */
+  // Tokens the uploader writes when it couldn't work out where a photo was
+  // taken. "Unsorted_NoGPS_001.jpg" is not a photo from a place called NoGPS,
+  // Unsorted — treating it as one grouped every unlocated photo under a heading
+  // that looked like a real city.
+  const PLACEHOLDER_PLACES = new Set(["NoGPS", "Unsorted", "Unknown"]);
+
   function cityLabelFromName(name) {
     const base = name.replace(/\.[^/.]+$/, "");
     const parts = base.split("_");
-    return parts.length >= 3 ? `${parts[1]}, ${parts[0]}` : null;
+    if (parts.length < 3) return null;
+    const [country, city] = parts;
+    // Returning null rather than a label matters: it lets resolveCityLabel fall
+    // through to reading the photo's own GPS, which may well place a photo the
+    // filename couldn't.
+    if (PLACEHOLDER_PLACES.has(country) || PLACEHOLDER_PLACES.has(city)) return null;
+    return `${city}, ${country}`;
   }
 
   // OpenStreetMap Nominatim's usage policy caps requests at ~1/second and asks

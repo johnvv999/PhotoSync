@@ -1,67 +1,36 @@
 package com.johnvv.photosync
 
 import android.Manifest
-import android.accounts.AccountManager
-import android.app.Activity
-import android.app.AlertDialog
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.widget.EditText
-import android.widget.Toast
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.work.*
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.Scope
-import com.google.api.services.drive.DriveScopes
+import androidx.fragment.app.Fragment
+import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.work.WorkManager
+import com.google.android.material.tabs.TabLayoutMediator
 import com.johnvv.photosync.databinding.ActivityMainBinding
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
+/**
+ * Hosts the three tabs — Sync, Edit and Settings — and owns the app-wide
+ * startup work that isn't any one tab's business: runtime permissions, the
+ * auto-sync floor, and clearing leftover background work.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var googleSignInClient: GoogleSignInClient
-    private lateinit var syncState: SyncState
-
-    private val signInLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            syncState.selectedAccountName = account.email
-            binding.statusText.text = "Signed in as ${account.email}"
-            launchAccountPickerIfNeeded()
-        } catch (e: ApiException) {
-            binding.statusText.text = "Sign-in failed (code ${e.statusCode}). Check the OAuth client setup in Google Cloud Console."
-        }
-    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* proceed regardless; worker will just skip GPS tagging if location perm denied */ }
 
-    private val accountPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val pickedName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-        if (result.resultCode == Activity.RESULT_OK && pickedName != null) {
-            syncState.selectedAccountName = pickedName
-            syncState.driveAccountAuthorized = true
-            binding.statusText.text = "Signed in as $pickedName"
-        } else {
-            binding.statusText.text = "Drive account access wasn't granted — sync won't work until you allow it."
-        }
+    /** Tab order, left to right. */
+    private enum class Tab(val titleRes: Int, val create: () -> Fragment) {
+        SYNC(R.string.tab_sync, ::SyncFragment),
+        EDIT(R.string.tab_edit, ::EditPhotosFragment),
+        SETTINGS(R.string.tab_settings, ::SettingsFragment)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        syncState = SyncState(this)
+        val syncState = SyncState(this)
 
         // Never let a stale/zeroed "last synced" mark send auto-sync through the
         // whole camera roll: floor it to the same date the worker enforces.
@@ -85,103 +54,16 @@ class MainActivity : AppCompatActivity() {
             syncState.runawaySyncCleared = true
         }
 
-        val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(Scope(DriveScopes.DRIVE_FILE), Scope(DriveScopes.DRIVE_READONLY))
-            .build()
-        googleSignInClient = GoogleSignIn.getClient(this, signInOptions)
-
         requestNeededPermissions()
 
-        val existingAccount = GoogleSignIn.getLastSignedInAccount(this)
-        if (existingAccount != null) {
-            syncState.selectedAccountName = existingAccount.email
-            binding.statusText.text = "Signed in as ${existingAccount.email}"
-            launchAccountPickerIfNeeded()
-        } else {
-            binding.statusText.text = "Not signed in"
+        val tabs = Tab.entries
+        binding.pager.adapter = object : FragmentStateAdapter(this) {
+            override fun getItemCount() = tabs.size
+            override fun createFragment(position: Int) = tabs[position].create()
         }
-
-        binding.signInButton.setOnClickListener {
-            signInLauncher.launch(googleSignInClient.signInIntent)
-        }
-
-        binding.syncNowButton.setOnClickListener {
-            triggerImmediateSync()
-        }
-
-        binding.getLinkButton.setOnClickListener {
-            showFolderLink()
-        }
-
-        binding.syncOptionsButton.setOnClickListener {
-            startActivity(Intent(this, SyncControlActivity::class.java))
-        }
-
-        binding.browseSyncedButton.setOnClickListener {
-            startActivity(Intent(this, SyncedPhotosActivity::class.java))
-        }
-
-        binding.useSharedFolderButton.setOnClickListener {
-            showSharedFolderDialog()
-        }
-    }
-
-    /**
-     * Lets this phone sync into a Drive folder shared from another account
-     * (e.g. so two phones on different accounts share one folder) instead of
-     * creating its own. The user pastes the folder's share link; we store the
-     * extracted folder ID as the sync target.
-     */
-    private fun showSharedFolderDialog() {
-        val input = EditText(this).apply {
-            hint = getString(R.string.shared_folder_hint)
-            if (syncState.usingSharedFolder) setText(syncState.rootFolderId.orEmpty())
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.shared_folder_title)
-            .setMessage(R.string.shared_folder_message)
-            .setView(input)
-            .setPositiveButton(R.string.use_shared_folder) { _, _ ->
-                val folderId = extractFolderId(input.text.toString())
-                if (folderId == null) {
-                    Toast.makeText(this, R.string.invalid_folder_link, Toast.LENGTH_LONG).show()
-                    return@setPositiveButton
-                }
-                syncState.rootFolderId = folderId
-                syncState.usingSharedFolder = true
-                SyncedPhotosActivity.invalidateCache()
-                binding.statusText.text = getString(R.string.shared_folder_set)
-            }
-            .setNeutralButton(R.string.use_own_folder) { _, _ ->
-                syncState.rootFolderId = null
-                syncState.usingSharedFolder = false
-                SyncedPhotosActivity.invalidateCache()
-                binding.statusText.text = getString(R.string.shared_folder_cleared)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    /** Pulls the folder ID out of a Drive folder link, or accepts a bare ID. */
-    private fun extractFolderId(input: String): String? {
-        val trimmed = input.trim()
-        Regex("/folders/([a-zA-Z0-9_-]+)").find(trimmed)?.let { return it.groupValues[1] }
-        // A bare folder ID: Drive IDs are long alphanumeric strings with - and _.
-        if (trimmed.matches(Regex("[a-zA-Z0-9_-]{20,}"))) return trimmed
-        return null
-    }
-
-    /**
-     * Launches Android's account-chooser dialog once, the first time this
-     * account is used. That explicit picker flow is what actually grants this
-     * app AccountManager visibility into the account for GoogleAccountCredential
-     * — just matching an email string from Google Sign-In isn't enough.
-     */
-    private fun launchAccountPickerIfNeeded() {
-        if (syncState.driveAccountAuthorized) return
-        val intent = AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)
-        accountPickerLauncher.launch(intent)
+        TabLayoutMediator(binding.tabLayout, binding.pager) { tab, position ->
+            tab.text = getString(tabs[position].titleRes)
+        }.attach()
     }
 
     private fun requestNeededPermissions() {
@@ -198,80 +80,5 @@ class MainActivity : AppCompatActivity() {
         if (needed.isNotEmpty()) {
             permissionLauncher.launch(needed.toTypedArray())
         }
-    }
-
-    private fun triggerImmediateSync() {
-        val request = OneTimeWorkRequestBuilder<PhotoUploadWorker>()
-            .setConstraints(
-                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            )
-            .build()
-        WorkManager.getInstance(this).enqueueUniqueWork(
-            "photosync_manual_upload",
-            ExistingWorkPolicy.KEEP,
-            request
-        )
-        binding.statusText.text = "Sync started…"
-
-        WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
-            info ?: return@observe
-            val done = info.progress.getInt(PhotoUploadWorker.PROGRESS_DONE, -1)
-            val total = info.progress.getInt(PhotoUploadWorker.PROGRESS_TOTAL, -1)
-            when (info.state) {
-                WorkInfo.State.RUNNING -> if (total >= 0) {
-                    binding.statusText.text = getString(R.string.backing_up_progress, done, total)
-                }
-                WorkInfo.State.SUCCEEDED -> {
-                    binding.statusText.text = if (total > 0) {
-                        getString(R.string.backed_up_count, total)
-                    } else {
-                        getString(R.string.nothing_to_back_up)
-                    }
-                    SyncedPhotosActivity.invalidateCache()
-                    updateStorageStats()
-                }
-                WorkInfo.State.FAILED -> binding.statusText.text = "Sync failed. Check connection and sign-in."
-                else -> {} // enqueued — leave "Sync started…" showing
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateStorageStats()
-    }
-
-    private fun updateStorageStats() {
-        CoroutineScope(Dispatchers.IO).launch {
-            val s = StorageInfo.read(this@MainActivity)
-            runOnUiThread {
-                binding.storageText.text = getString(
-                    R.string.storage_line,
-                    s.photoCount,
-                    StorageInfo.formatBytes(s.photoBytes),
-                    StorageInfo.formatBytes(s.freeBytes),
-                    StorageInfo.formatBytes(s.totalBytes)
-                )
-            }
-        }
-    }
-
-    /**
-     * Shares the public PhotoSync browsing page (docs/index.html, view-only,
-     * no Drive UI or upload capability) rather than Drive's own folder link
-     * — that opened Drive's native web UI, letting anyone with the link
-     * upload files into the folder, which isn't what "share these photos"
-     * should mean here.
-     */
-    private fun showFolderLink() {
-        val label = "Our Adventure"
-        val url = "https://tinyurl.com/JVVMyPhotos"
-        // HTML representation shows as a named hyperlink when pasted into a
-        // rich-text-capable target (e.g. an HTML email body); the plain-text
-        // fallback (name + raw URL together) is what SMS and other plain-text
-        // targets receive instead, since a custom-labelled link isn't possible there.
-        val clip = ClipData.newHtmlText(label, "$label: $url", "<a href=\"$url\">$label</a>")
-        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-        binding.statusText.text = "\"$label\" link copied — paste it into a message or email."
     }
 }

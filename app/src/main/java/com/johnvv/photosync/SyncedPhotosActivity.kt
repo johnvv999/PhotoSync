@@ -36,6 +36,7 @@ class SyncedPhotosActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.photosList.layoutManager = LinearLayoutManager(this)
+        binding.returnButton.setOnClickListener { finish() }
 
         val syncState = SyncState(this)
         val accountName = syncState.selectedAccountName

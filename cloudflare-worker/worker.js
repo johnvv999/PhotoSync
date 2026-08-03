@@ -30,6 +30,27 @@ const ALLOWED_ORIGIN = "https://johnvv999.github.io";
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_PROMPT =
   "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
+
+// Used by the Android app's "Find Redundant Photos" pass. The app pre-groups
+// visually similar photos on-device (perceptual hashing) and sends each group
+// here for Gemini to make the actual keep/discard judgement — near-identical
+// pixels don't mean redundant (a burst of a moving subject isn't), and clearly
+// different pixels can still be redundant (the same view reshot badly).
+//
+// The prompt is fixed server-side rather than passed in by the caller: this
+// Worker's credential must stay scoped to the two things PhotoSync does with
+// it, not become a general-purpose Gemini endpoint for anyone holding the
+// (extractable) app secret.
+const COMPARE_PROMPT =
+  "These photos from one personal photo library were flagged as visually similar. " +
+  "Decide which are redundant near-duplicates that could be deleted without losing anything, " +
+  "keeping the single best one (sharpest, best framed, best exposed, most complete). " +
+  "Photos that capture genuinely different moments, subjects, or angles are NOT redundant, even if they look alike. " +
+  "Respond with ONLY a JSON object, no markdown fence, in this exact shape: " +
+  '{"keep": <1-based index of the photo to keep>, "redundant": [<1-based indices safe to delete>], "reason": "<one short sentence>"}. ' +
+  'If none are actually redundant, return {"keep": 1, "redundant": [], "reason": "..."}.';
+
+const MAX_COMPARE_IMAGES = 8;
 const TOKEN_SCOPE = "https://www.googleapis.com/auth/generative-language";
 
 // Cached across requests within the same Worker isolate — avoids minting a
@@ -147,15 +168,36 @@ export default {
       return json({ error: "Invalid JSON body" }, 400, headers);
     }
 
-    const { mimeType, data, lat, lon } = body;
-    if (!data || typeof data !== "string") {
-      return json({ error: "Missing image data" }, 400, headers);
-    }
+    const { mode, images, mimeType, data, lat, lon } = body;
 
-    // Optional GPS from the caller lets Gemini pin the actual location/landmark.
-    let prompt = GEMINI_PROMPT;
-    if (typeof lat === "number" && typeof lon === "number") {
-      prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
+    // Two request shapes: the original single-image "describe this photo", and
+    // the app's multi-image duplicate comparison.
+    let prompt;
+    let imageParts;
+    if (mode === "compare") {
+      if (!Array.isArray(images) || images.length < 2) {
+        return json({ error: "compare mode needs at least 2 images" }, 400, headers);
+      }
+      if (images.length > MAX_COMPARE_IMAGES) {
+        return json({ error: `compare mode accepts at most ${MAX_COMPARE_IMAGES} images` }, 400, headers);
+      }
+      if (images.some((img) => !img || typeof img.data !== "string")) {
+        return json({ error: "Missing image data" }, 400, headers);
+      }
+      prompt = COMPARE_PROMPT;
+      imageParts = images.map((img) => ({
+        inline_data: { mime_type: img.mimeType || "image/jpeg", data: img.data },
+      }));
+    } else {
+      if (!data || typeof data !== "string") {
+        return json({ error: "Missing image data" }, 400, headers);
+      }
+      // Optional GPS from the caller lets Gemini pin the actual location/landmark.
+      prompt = GEMINI_PROMPT;
+      if (typeof lat === "number" && typeof lon === "number") {
+        prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
+      }
+      imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
     }
 
     let accessToken;
@@ -167,10 +209,7 @@ export default {
 
     const geminiBody = {
       contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mimeType || "image/jpeg", data } },
-        ],
+        parts: [{ text: prompt }, ...imageParts],
       }],
     };
 

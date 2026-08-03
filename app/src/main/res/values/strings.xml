@@ -2,7 +2,9 @@
     <string name="app_name">PhotoSync</string>
     <string name="status_not_signed_in">Not signed in</string>
     <string name="sign_in_with_google">Sign In</string>
-    <string name="sync_now">Sync now</string>
+    <string name="stop_sync">Stop Sync</string>
+    <string name="sync_stopped">Stopped Sync. Photos already uploaded stay on Drive; the rest resume next time you sync.</string>
+    <string name="preparing_progress">Preparing %1$d of %2$d… (reading photo dates and locations)</string>
     <string name="get_folder_link">Share Link</string>
     <string name="sync_options">Sync Options</string>
     <string name="start_date_label">Start: %1$s</string>
@@ -49,6 +51,65 @@
     <string name="use_own_folder">Use my own folder</string>
     <string name="storage_line">%1$d photos using %2$s • %3$s free of %4$s</string>
     <string name="backing_up_progress">Backing up %1$d of %2$d…</string>
-    <string name="backed_up_count">Sync complete — backed up %1$d photo(s).</string>
+    <string name="backed_up_all_located">Sync complete — backed up %1$d photo(s), all with a location. None tagged NoGPS.</string>
+    <string name="backed_up_with_nogps">Sync complete — backed up %1$d photo(s), but %2$d had no GPS and none nearby to copy, so they\'re tagged NoGPS. Fix those on the Edit tab.</string>
     <string name="nothing_to_back_up">Sync complete — nothing new to back up.</string>
+
+    <!-- Tabs -->
+    <string name="tab_sync">Sync</string>
+    <string name="tab_edit">Edit</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Settings tab -->
+    <string name="link_copied">\"%1$s\" link copied — paste it into a message or email.</string>
+    <string name="signed_in_as">Signed in as %1$s</string>
+    <string name="sign_in_failed">Sign-in failed (code %1$d). Check the OAuth client setup in Google Cloud Console.</string>
+    <string name="drive_access_not_granted">Drive account access wasn\'t granted — sync won\'t work until you allow it.</string>
+    <string name="sign_in_on_settings_tab">Not signed in — sign in on the Settings tab.</string>
+    <string name="reupload_everything">Re-upload Everything</string>
+    <string name="reupload_dialog_title">Re-upload your whole library?</string>
+    <string name="reupload_dialog_message">This forgets which photos have already been uploaded, so the next sync sends all of them again with corrected names and location data.\n\nDelete the old photos from your Drive folder FIRST — otherwise you\'ll end up with two copies of everything.\n\nNothing on Drive is touched by this button.</string>
+    <string name="reupload_confirm">Forget uploads</string>
+    <string name="reupload_ready">Ready to re-upload. Now go to Sync → Sync Options → Sync All and start the sync.</string>
+
+    <!-- Edit tab -->
+    <string name="edit_intro">Fix locations, or find redundant photos to delete.</string>
+    <string name="edit_photo_count">%1$d photos in your Drive folder.</string>
+    <string name="fix_locations">Fix Locations</string>
+    <string name="fixing_locations">Reading photos and working out locations…</string>
+    <string name="fixing_progress">Fixing %1$d of %2$d…</string>
+    <string name="fix_complete">Done — renamed %1$d photo(s), %2$d took the location of an earlier photo.</string>
+    <string name="fix_skipped">%1$d couldn\'t be changed (not uploaded by this app).</string>
+    <string name="fix_still_unlocated">%1$d are still unlocated — they come before the first photo that has a location.</string>
+    <string name="fix_no_source_location">None of the %1$d photos on Drive has GPS to copy from, so there\'s nothing to inherit. Re-sync some photos (this build now uploads GPS correctly), or type a location in below.</string>
+    <string name="no_folder_yet">No Drive folder loaded yet — sign in on the Settings tab, then reopen this tab.</string>
+    <string name="location_hint">City, Country</string>
+    <string name="save_location">Save</string>
+    <string name="location_empty">Type a location first, e.g. \"Paris, France\".</string>
+    <string name="renamed_to">Renamed to %1$s</string>
+    <string name="rename_failed">Couldn\'t rename %1$s — Drive wouldn\'t allow it.</string>
+
+    <!-- Redundant photos -->
+    <string name="find_redundant">Find Redundant</string>
+    <string name="not_enough_photos_to_compare">Need at least two photos to compare.</string>
+    <string name="scanning_for_duplicates">Looking for similar photos…</string>
+    <string name="comparing_progress">Comparing %1$d of %2$d…</string>
+    <string name="asking_ai">Asking AI which ones are redundant…</string>
+    <string name="no_redundant_found">No redundant photos found.</string>
+    <string name="redundant_found">Found %1$d group(s) of similar photos — %2$d selected to delete.</string>
+    <string name="redundant_selected">%1$d selected to delete.</string>
+    <string name="redundant_group_title">Group %1$d — %2$d similar photos</string>
+    <string name="redundant_no_ai_verdict">AI couldn\'t review this group — pick manually.</string>
+    <string name="redundant_keep_label">AI suggests keeping this one</string>
+    <string name="redundant_delete_label">AI says redundant</string>
+
+    <!-- Deleting -->
+    <string name="delete_selected">Delete Selected</string>
+    <string name="nothing_selected_to_delete">Nothing selected. Run Find Redundant, then tick the photos to delete.</string>
+    <string name="delete_dialog_title">Delete from Google Drive?</string>
+    <string name="delete_dialog_message">%1$d photo(s) will be moved to your Google Drive trash, where they can still be recovered for 30 days.</string>
+    <string name="delete_confirm">Delete</string>
+    <string name="deleting_progress">Deleting %1$d of %2$d…</string>
+    <string name="deleted_count">Deleted %1$d photo(s) to Drive trash.</string>
+    <string name="deleted_with_failures">Deleted %1$d photo(s); %2$d couldn\'t be deleted.</string>
 </resources>

@@ -46,6 +46,39 @@ class PhotoUploadWorker(
         const val PROGRESS_TOTAL = "progress_total"
 
         /**
+         * Which half of the run is being reported. Reading every photo's EXIF
+         * happens before anything uploads and takes real time on a large library,
+         * so without naming the phase the UI would sit blank through it and look
+         * hung.
+         */
+        const val PROGRESS_PHASE = "progress_phase"
+        const val PHASE_PREPARING = "preparing"
+        const val PHASE_UPLOADING = "uploading"
+
+        /**
+         * How many photos this run still had to file as "Unsorted_NoGPS" — no fix
+         * of their own and nothing in range to inherit one from. Reported as
+         * output data so the UI can confirm the run left none behind, rather than
+         * the user having to go and check Drive.
+         */
+        const val RESULT_UNLOCATED = "result_unlocated"
+
+        /**
+         * How many photos actually uploaded. This has to travel in output data
+         * rather than being read back off the progress fields: WorkManager clears
+         * progress the moment a worker reaches a terminal state, so a completion
+         * handler reading [PROGRESS_TOTAL] always sees nothing.
+         */
+        const val RESULT_UPLOADED = "result_uploaded"
+
+        /**
+         * Shared tag on every upload request, so the Sync tab can watch whatever
+         * sync is in flight — whichever screen started it — and cancel it by tag
+         * rather than having to know its id.
+         */
+        const val TAG_UPLOAD = "photosync_upload"
+
+        /**
          * Auto-sync never considers photos taken before this date, even if the
          * saved "last synced" mark is 0 (e.g. after a reinstall wiped app data).
          * Without this floor a reset would crawl the user's entire camera roll.
@@ -145,21 +178,170 @@ class PhotoUploadWorker(
         val toUpload = entries.filter { entry ->
             !excludedStore.isExcluded(entry.id) && (forceDuplicates || !uploadedStore.isUploaded(entry.id))
         }
+
+        val candidates = resolveLocations(resolver, syncState, toUpload)
+        if (isStopped) {
+            syncState.recordSyncOutcome(SyncStatus.OUTCOME_STOPPED)
+            return Result.failure()
+        }
+
         var done = 0
-        reportProgress(done, toUpload.size)
-        for (entry in toUpload) {
+        reportProgress(PHASE_UPLOADING, done, candidates.size)
+        for (candidate in candidates) {
+            // Uploading a photo is one long blocking call, so cancellation can't
+            // interrupt it — check between photos instead, which makes Stop take
+            // effect within one photo rather than at the end of the batch.
+            if (isStopped) {
+                syncState.recordSyncOutcome(SyncStatus.OUTCOME_STOPPED)
+                return Result.failure()
+            }
             try {
-                uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, entry.id, entry.contentUri())
-                reportProgress(++done, toUpload.size)
+                uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, candidate)
+                reportProgress(PHASE_UPLOADING, ++done, candidates.size)
             } catch (e: Exception) {
-                return handleUploadException(syncState, entry.id, e)
+                return handleUploadException(syncState, candidate.entry.id, e)
             }
         }
-        return Result.success()
+        return successWithCounts(syncState, candidates, done)
     }
 
-    private fun reportProgress(done: Int, total: Int) {
-        setProgressAsync(androidx.work.workDataOf(PROGRESS_DONE to done, PROGRESS_TOTAL to total))
+    /**
+     * Reports what the run achieved: how many photos went up, and how many it
+     * couldn't place — so the UI can confirm none were left tagged NoGPS.
+     */
+    private fun successWithCounts(
+        syncState: SyncState,
+        candidates: List<Candidate>,
+        uploaded: Int
+    ): Result {
+        val unlocated = candidates.count { it.location == null }
+        // Persisted as well as returned: output data only reaches a screen that
+        // was observing, and a sync that finishes with the app in the background
+        // still has to be able to report itself later.
+        syncState.recordSyncOutcome(SyncStatus.OUTCOME_SUCCESS, uploaded, unlocated)
+        return Result.success(
+            androidx.work.workDataOf(RESULT_UPLOADED to uploaded, RESULT_UNLOCATED to unlocated)
+        )
+    }
+
+    /** One photo about to be uploaded, with the location it should be filed under. */
+    private class Candidate(val entry: PhotoEntry, val takenMs: Long, val ownCoords: DoubleArray?) {
+        /** Where this photo gets filed — its own place, or the one it inherited. */
+        var location: PhotoLocation? = null
+        /** Coordinates to stamp into the upload, set only when the photo had none of its own. */
+        var coordsToStamp: DoubleArray? = null
+    }
+
+    /**
+     * Works out a location for every photo in the batch *before* any of them
+     * upload, so nothing lands as "Unsorted_NoGPS".
+     *
+     * A photo without GPS takes the location of the nearest photo in time that
+     * has one — looking backwards first (the usual case: you walk indoors and
+     * the fix drops), then forwards, which is what rescues photos at the very
+     * start of a batch with nothing before them. The chain is seeded from, and
+     * written back to, [SyncState.lastKnownLocation] so it survives across runs.
+     *
+     * Only a batch where no photo anywhere has a fix — and no earlier run
+     * recorded one — still produces "Unsorted_NoGPS", because at that point
+     * there is genuinely no location in existence to copy.
+     */
+    private fun resolveLocations(
+        resolver: ContentResolver,
+        syncState: SyncState,
+        entries: List<PhotoEntry>
+    ): List<Candidate> {
+        val geocodeCache = mutableMapOf<String, PhotoLocation>()
+
+        val scanned = ArrayList<Candidate>(entries.size)
+        entries.forEachIndexed { index, entry ->
+            // Reading a whole library's EXIF takes minutes, and it all happens
+            // before the first upload. Without this check Stop would appear to do
+            // nothing for the entire preparation phase.
+            if (isStopped) return emptyList()
+            val facts = OriginalMedia.open(resolver, entry.contentUri())?.use { stream ->
+                LocationNaming.readExifFacts(stream)
+            }
+            scanned += Candidate(entry, facts?.takenMs ?: entry.dateTakenMs, facts?.coords)
+            reportProgress(PHASE_PREPARING, index + 1, entries.size)
+        }
+
+        // Ascending capture order, and this sort is load-bearing twice over:
+        // inheritance only makes sense chronologically, and the per-location
+        // counter is handed out in upload order, so uploading newest-first (which
+        // is how MODE_ALL arrives) numbers the whole library backwards.
+        val candidates = scanned.sortedBy { it.takenMs }
+
+        fun geocode(coords: DoubleArray): PhotoLocation {
+            val key = "%.3f,%.3f".format(coords[0], coords[1])
+            return geocodeCache.getOrPut(key) {
+                LocationNaming.reverseGeocode(applicationContext, coords[0], coords[1])
+            }
+        }
+
+        // Backward fill, seeded from wherever the previous run left off.
+        var lastLocation: PhotoLocation? = syncState.lastKnownLocation
+        var lastCoords: DoubleArray? = syncState.lastKnownCoords
+        for (candidate in candidates) {
+            val own = candidate.ownCoords
+            if (own != null) {
+                val located = geocode(own)
+                // A photo can have a perfectly good fix that the geocoder simply
+                // can't name (offline, or open water). Leaving it on the
+                // placeholder would tag it NoGPS despite having coordinates, so
+                // treat it as unplaced and let it inherit a name like the rest.
+                if (!LocationNaming.isPlaceholder(located)) {
+                    lastLocation = located
+                    lastCoords = own
+                    candidate.location = located
+                }
+            }
+            if (candidate.location == null && lastLocation != null) {
+                candidate.location = lastLocation
+                // Only photos with no fix of their own need one stamped in; one
+                // whose geocode merely failed already carries real coordinates.
+                if (own == null) candidate.coordsToStamp = lastCoords
+            }
+        }
+
+        // Forward fill for anything still unplaced — photos before the batch's
+        // first fix, which the backward pass can't reach.
+        var nextLocation: PhotoLocation? = null
+        var nextCoords: DoubleArray? = null
+        for (candidate in candidates.asReversed()) {
+            val own = candidate.ownCoords
+            if (own != null) {
+                val located = geocode(own)
+                if (!LocationNaming.isPlaceholder(located)) {
+                    nextLocation = located
+                    nextCoords = own
+                }
+            }
+            if (candidate.location == null && nextLocation != null) {
+                candidate.location = nextLocation
+                if (own == null) candidate.coordsToStamp = nextCoords
+            }
+        }
+
+        if (lastLocation != null) {
+            syncState.lastKnownLocation = lastLocation
+            syncState.lastKnownCoords = lastCoords
+        }
+        val unplaced = candidates.count { it.location == null }
+        if (unplaced > 0) {
+            Log.w(TAG, "$unplaced photo(s) have no GPS anywhere in range — filing as Unsorted_NoGPS")
+        }
+        return candidates
+    }
+
+    private fun reportProgress(phase: String, done: Int, total: Int) {
+        setProgressAsync(
+            androidx.work.workDataOf(
+                PROGRESS_PHASE to phase,
+                PROGRESS_DONE to done,
+                PROGRESS_TOTAL to total
+            )
+        )
     }
 
     private fun uploadOne(
@@ -168,22 +350,59 @@ class PhotoUploadWorker(
         indexStore: LocationIndexStore,
         uploadedStore: UploadedPhotoStore,
         rootFolderId: String,
-        photoId: Long,
-        contentUri: Uri
+        candidate: Candidate
     ) {
-        val location = resolver.openInputStream(contentUri)?.use { exifStream ->
-            LocationNaming.readLatLong(exifStream)
-        }?.let { latLong ->
-            LocationNaming.reverseGeocode(applicationContext, latLong[0], latLong[1])
-        } ?: PhotoLocation(city = "NoGPS", country = "Unsorted")
-
+        val contentUri = candidate.entry.contentUri()
+        val location = candidate.location ?: PhotoLocation(city = "NoGPS", country = "Unsorted")
         val index = indexStore.nextIndex(location.key())
         val fileName = LocationNaming.buildFileName(location, index)
 
-        resolver.openInputStream(contentUri)?.use { uploadStream ->
-            drive.uploadPhoto(uploadStream, fileName, rootFolderId)
+        val stamp = candidate.coordsToStamp
+        if (stamp == null) {
+            // The photo carries its own fix already — upload the original bytes
+            // untouched. OriginalMedia is what keeps that fix from being stripped
+            // in transit; a redacted upload loses it for good, since the Drive
+            // copy is then the only one the Edit screen can ever see.
+            OriginalMedia.open(resolver, contentUri)?.use { uploadStream ->
+                drive.uploadPhoto(uploadStream, fileName, rootFolderId, candidate.takenMs)
+            }
+        } else {
+            uploadWithStampedGps(
+                resolver, drive, contentUri, fileName, rootFolderId,
+                candidate.entry.id, stamp, candidate.takenMs
+            )
         }
-        uploadedStore.markUploaded(photoId)
+        uploadedStore.markUploaded(candidate.entry.id)
+    }
+
+    /**
+     * Uploads a photo that inherited its location, with those coordinates written
+     * into its EXIF so the location travels with the file rather than living only
+     * in its name. Needs a real file on disk — ExifInterface can't rewrite a
+     * stream — so the bytes go through the cache directory on the way.
+     */
+    private fun uploadWithStampedGps(
+        resolver: ContentResolver,
+        drive: DriveServiceHelper,
+        contentUri: Uri,
+        fileName: String,
+        rootFolderId: String,
+        photoId: Long,
+        coords: DoubleArray,
+        takenTimeMs: Long
+    ) {
+        val temp = java.io.File(applicationContext.cacheDir, "photosync_stamp_$photoId.jpg")
+        try {
+            OriginalMedia.open(resolver, contentUri)?.use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            } ?: return
+            // Best effort: if the format can't take an EXIF rewrite the photo
+            // still uploads, just without a fix of its own.
+            LocationNaming.writeLatLong(temp, coords[0], coords[1])
+            temp.inputStream().use { drive.uploadPhoto(it, fileName, rootFolderId, takenTimeMs) }
+        } finally {
+            temp.delete()
+        }
     }
 
     private fun runAutoSync(
@@ -200,7 +419,7 @@ class PhotoUploadWorker(
         if (sinceEpochSeconds != syncState.lastSyncedEpochSeconds) {
             syncState.lastSyncedEpochSeconds = sinceEpochSeconds
         }
-        var maxProcessedEpochSeconds = sinceEpochSeconds
+        val maxProcessedEpochSeconds = sinceEpochSeconds
 
         val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
         val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
@@ -223,38 +442,42 @@ class PhotoUploadWorker(
             }
         }
 
-        val total = candidates.count { !uploadedStore.isUploaded(it.id) && !excludedStore.isExcluded(it.id) }
+        val toUpload = candidates.filter {
+            !uploadedStore.isUploaded(it.id) && !excludedStore.isExcluded(it.id)
+        }
+        val resolved = resolveLocations(resolver, syncState, toUpload)
+        if (isStopped) {
+            syncState.recordSyncOutcome(SyncStatus.OUTCOME_STOPPED)
+            return Result.failure()
+        }
+
         var done = 0
-        reportProgress(done, total)
-
-        for (entry in candidates) {
-            val id = entry.id
-            val dateAdded = entry.dateTakenMs / 1000L
-            val contentUri: Uri = Uri.withAppendedPath(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
-            )
-
-            if (uploadedStore.isUploaded(id) || excludedStore.isExcluded(id)) {
-                // Already uploaded, or flagged never-upload — advance the mark past it.
-                maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
-                syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
-                continue
+        reportProgress(PHASE_UPLOADING, done, resolved.size)
+        for (candidate in resolved) {
+            // Stop between photos — see uploadEntries. Leaving the mark unmoved on
+            // the way out means the next run picks up where this one stopped.
+            if (isStopped) {
+                syncState.recordSyncOutcome(SyncStatus.OUTCOME_STOPPED)
+                return Result.failure()
             }
-
             try {
-                uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, id, contentUri)
-                reportProgress(++done, total)
-                maxProcessedEpochSeconds = maxOf(maxProcessedEpochSeconds, dateAdded)
-                // Persist progress after each photo so a mid-batch failure doesn't
-                // cause already-uploaded photos to be re-uploaded on retry.
-                syncState.lastSyncedEpochSeconds = maxProcessedEpochSeconds
+                uploadOne(resolver, drive, indexStore, uploadedStore, rootFolderId, candidate)
+                reportProgress(PHASE_UPLOADING, ++done, resolved.size)
             } catch (e: Exception) {
-                // Leave lastSyncedEpochSeconds where it is; this photo (and any
-                // after it) will be retried on the next run.
-                return handleUploadException(syncState, id, e)
+                // Leave the mark where it is and retry the run. Uploads now go in
+                // capture order rather than date-added order, so the mark can't be
+                // advanced photo-by-photo without risking stepping over something
+                // that hasn't uploaded yet — and uploadedStore already stops
+                // anything that did land from going up a second time.
+                return handleUploadException(syncState, candidate.entry.id, e)
             }
         }
 
-        return Result.success()
+        // The batch finished, so move the mark past everything this run looked at,
+        // skipped and excluded photos included.
+        val newestSeen = candidates.maxOfOrNull { it.dateTakenMs / 1000L } ?: maxProcessedEpochSeconds
+        syncState.lastSyncedEpochSeconds = maxOf(maxProcessedEpochSeconds, newestSeen)
+
+        return successWithCounts(syncState, resolved, done)
     }
 }

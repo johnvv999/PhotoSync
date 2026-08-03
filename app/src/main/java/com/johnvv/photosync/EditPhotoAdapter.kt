@@ -1,10 +1,11 @@
 package com.johnvv.photosync
 
 import android.content.Context
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -15,24 +16,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Chronological list of photos actually in the Drive folder, with a city title
- * row whenever the city changes, and an "Info" link beneath each photo that
- * fetches a Gemini description.
+ * The Edit screen's photo list: the same chronological, city-headed layout as
+ * Browse Synced Photos (thumbnail plus a Gemini "Info" link), with each photo's
+ * location shown in an editable field so a wrong or inherited place name can be
+ * corrected by hand.
  */
-class DrivePhotoAdapter(
+class EditPhotoAdapter(
     private val context: Context,
-    private val items: List<SyncedListItem>,
+    private var items: List<SyncedListItem>,
     private val drive: DriveServiceHelper,
     private val scope: CoroutineScope,
-    private val accountName: String
+    private val accountName: String,
+    /** Invoked with the photo and the typed "City, Country" when Save is tapped. */
+    private val onLocationEdited: (DrivePhoto, String) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private companion object {
         const val VIEW_TYPE_HEADER = 0
         const val VIEW_TYPE_PHOTO = 1
-
-        val LINK_BLUE = Color.parseColor("#1A73E8")
-        val LINK_GREY = Color.parseColor("#6B6B70")
     }
 
     private val expandedIds = mutableSetOf<String>()
@@ -41,11 +42,19 @@ class DrivePhotoAdapter(
 
     class PhotoViewHolder(root: View) : RecyclerView.ViewHolder(root) {
         val thumbnail: ImageView = root.findViewById(R.id.thumbnail)
+        val fileNameText: TextView = root.findViewById(R.id.fileNameText)
+        val locationInput: EditText = root.findViewById(R.id.locationInput)
+        val saveLocationButton: Button = root.findViewById(R.id.saveLocationButton)
         val infoLink: TextView = root.findViewById(R.id.infoLink)
-        val mapLink: TextView = root.findViewById(R.id.mapLink)
         val infoResult: TextView = root.findViewById(R.id.infoResult)
         var thumbnailJob: Job? = null
         var infoJob: Job? = null
+    }
+
+    /** Swaps in a rebuilt list, e.g. after a rename moved a photo under a different city header. */
+    fun submit(newItems: List<SyncedListItem>) {
+        items = newItems
+        notifyDataSetChanged()
     }
 
     override fun getItemViewType(position: Int) = when (items[position]) {
@@ -59,8 +68,9 @@ class DrivePhotoAdapter(
                 .inflate(R.layout.item_city_header, parent, false) as TextView
             HeaderViewHolder(titleView)
         } else {
-            val root = LayoutInflater.from(parent.context).inflate(R.layout.item_synced_photo, parent, false)
-            PhotoViewHolder(root)
+            PhotoViewHolder(
+                LayoutInflater.from(parent.context).inflate(R.layout.item_edit_photo, parent, false)
+            )
         }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
@@ -73,6 +83,12 @@ class DrivePhotoAdapter(
     private fun bindPhoto(holder: PhotoViewHolder, photo: DrivePhoto) {
         holder.thumbnailJob?.cancel()
         holder.infoJob?.cancel()
+
+        holder.fileNameText.text = photo.name
+        // Left blank for a photo the uploader couldn't place, so the "City,
+        // Country" hint shows instead — prefilling it with a placeholder would
+        // put text in the box that must not be saved back as a location.
+        holder.locationInput.setText(realPlaceLabel(photo).orEmpty())
 
         val cachedThumb = DrivePhotoCache.thumbnail(photo.fileId)
         if (cachedThumb != null) {
@@ -89,15 +105,29 @@ class DrivePhotoAdapter(
             }
         }
 
+        holder.saveLocationButton.setOnClickListener {
+            onLocationEdited(photo, holder.locationInput.text.toString())
+        }
+
+        holder.thumbnail.setOnClickListener {
+            FullScreenPhotoActivity.start(context, photo.fileId, accountName)
+        }
+
+        bindInfoLink(holder, photo)
+    }
+
+    private fun bindInfoLink(holder: PhotoViewHolder, photo: DrivePhoto) {
         val cachedInfo = DrivePhotoCache.description(photo.fileId)
         holder.infoResult.text = cachedInfo.orEmpty()
-        holder.infoResult.visibility = if (cachedInfo != null && photo.fileId in expandedIds) View.VISIBLE else View.GONE
+        holder.infoResult.visibility =
+            if (cachedInfo != null && photo.fileId in expandedIds) View.VISIBLE else View.GONE
 
         holder.infoLink.setOnClickListener {
-            val existing = DrivePhotoCache.description(photo.fileId)
-            if (existing != null) {
+            if (DrivePhotoCache.description(photo.fileId) != null) {
+                // Already fetched — the link just folds the text away and back.
                 if (photo.fileId in expandedIds) expandedIds -= photo.fileId else expandedIds += photo.fileId
-                holder.infoResult.visibility = if (photo.fileId in expandedIds) View.VISIBLE else View.GONE
+                holder.infoResult.visibility =
+                    if (photo.fileId in expandedIds) View.VISIBLE else View.GONE
                 return@setOnClickListener
             }
 
@@ -105,54 +135,18 @@ class DrivePhotoAdapter(
             holder.infoResult.visibility = View.VISIBLE
             holder.infoResult.text = context.getString(R.string.loading_info)
             holder.infoJob = scope.launch {
-                val description = withContext(Dispatchers.IO) {
-                    DrivePhotoInfo.describe(drive, photo)
-                } ?: context.getString(R.string.couldnt_load_photo)
+                val description = withContext(Dispatchers.IO) { DrivePhotoInfo.describe(drive, photo) }
+                    ?: context.getString(R.string.couldnt_load_photo)
                 holder.infoResult.text = description
             }
         }
-
-        holder.thumbnail.setOnClickListener {
-            FullScreenPhotoActivity.start(context, photo.fileId, accountName)
-        }
-
-        bindMapLink(holder, photo)
     }
 
-    /**
-     * Lights up the Map link once the photo's GPS is known. Usually that costs
-     * nothing — Drive reports coordinates in the folder listing itself — but a
-     * photo Drive found no fix for still needs its EXIF header read over the
-     * network, so this resolves off the main thread either way and shows the
-     * link disabled/grey until an answer arrives.
-     */
-    private fun bindMapLink(holder: PhotoViewHolder, photo: DrivePhoto) {
-        fun apply(coords: DoubleArray?) {
-            val hasGps = coords != null
-            holder.mapLink.isEnabled = hasGps
-            holder.mapLink.setTextColor(if (hasGps) LINK_BLUE else LINK_GREY)
-            holder.mapLink.setOnClickListener {
-                if (coords != null) MapViewActivity.start(context, coords[0], coords[1])
-            }
-        }
-
-        if (DrivePhotoCache.hasGps(photo.fileId)) {
-            apply(DrivePhotoCache.gps(photo.fileId))
-            return
-        }
-        // Unknown yet: show disabled, then resolve in the background.
-        apply(null)
-        scope.launch {
-            val coords = withContext(Dispatchers.IO) { DrivePhotoInfo.coords(drive, photo) }
-            // Only update if this holder is still bound to the same photo.
-            if (holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {
-                val current = items.getOrNull(holder.bindingAdapterPosition)
-                if (current is SyncedListItem.Photo && current.photo.fileId == photo.fileId) {
-                    apply(coords)
-                }
-            }
-        }
-    }
+    /** The photo's location as "City, Country", or null if its name carries no real place. */
+    private fun realPlaceLabel(photo: DrivePhoto): String? =
+        LocationNaming.parseFileName(photo.name)?.location
+            ?.takeUnless { LocationNaming.isPlaceholder(it) }
+            ?.let { LocationNaming.displayLabel(it) }
 
     override fun getItemCount() = items.size
 }

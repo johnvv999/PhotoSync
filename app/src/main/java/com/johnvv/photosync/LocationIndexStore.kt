@@ -22,4 +22,29 @@ class LocationIndexStore(context: Context) {
         prefs.edit().putInt(locationKey, next).apply()
         return next
     }
+
+    /**
+     * Pushes the high-water mark for [locationKey] up to [index] if it isn't
+     * already there. The Edit screen renumbers existing Drive files from
+     * scratch, which can hand out indices above whatever this store had
+     * reached (a city that gained photos through inheriting a neighbour's
+     * location, say) — without raising the mark, the next upload would reuse
+     * an index that's now taken.
+     */
+    @Synchronized
+    fun raiseTo(locationKey: String, index: Int) {
+        if (prefs.getInt(locationKey, 0) < index) {
+            prefs.edit().putInt(locationKey, index).apply()
+        }
+    }
+
+    /**
+     * Restarts every location's numbering at 001. Only correct when the Drive
+     * folder is being repopulated from scratch — otherwise the next upload
+     * reuses indices that existing files already hold.
+     */
+    @Synchronized
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
 }

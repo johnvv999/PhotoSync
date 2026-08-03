@@ -73,4 +73,21 @@
         android:layout_marginTop="16dp"
         android:text="@string/start_sync_button" />
 
+    <!-- Live sync state, kept at the bottom so it stays visible whether or not
+         the results list above is showing. -->
+    <TextView
+        android:id="@+id/syncStatusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textStyle="bold"
+        android:textColor="#0D3B66" />
+
+    <Button
+        android:id="@+id/returnButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/return_button" />
+
 </LinearLayout>

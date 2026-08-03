@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.johnvv.photosync.databinding.ActivitySyncControlBinding
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +50,15 @@ class SyncControlActivity : AppCompatActivity() {
         binding.modeGroup.setOnCheckedChangeListener { _, _ -> onModeChanged() }
         binding.scanButton.setOnClickListener { scan() }
         binding.startSyncButton.setOnClickListener { startSync() }
+        binding.returnButton.setOnClickListener { finish() }
+
+        // Watching by tag, set up unconditionally rather than only after this
+        // screen starts a sync: that way reopening it mid-run shows live progress,
+        // and reopening it afterwards still reports how the run ended.
+        SyncStatus.watch(this, this) { snapshot ->
+            binding.syncStatusText.text = snapshot?.text.orEmpty()
+            if (snapshot?.running == false) SyncedPhotosActivity.invalidateCache()
+        }
 
         onModeChanged()
     }
@@ -208,30 +216,15 @@ class SyncControlActivity : AppCompatActivity() {
     }
 
     private fun enqueueSync(data: Data) {
-        val request = OneTimeWorkRequestBuilder<PhotoUploadWorker>().setInputData(data).build()
+        val request = OneTimeWorkRequestBuilder<PhotoUploadWorker>()
+            .setInputData(data)
+            .addTag(PhotoUploadWorker.TAG_UPLOAD)
+            .build()
         WorkManager.getInstance(this).enqueue(request)
-        binding.statusText.text = getString(R.string.sync_started_status)
-
-        WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id).observe(this) { info ->
-            info ?: return@observe
-            val done = info.progress.getInt(PhotoUploadWorker.PROGRESS_DONE, -1)
-            val total = info.progress.getInt(PhotoUploadWorker.PROGRESS_TOTAL, -1)
-            when (info.state) {
-                WorkInfo.State.RUNNING -> if (total >= 0) {
-                    binding.statusText.text = getString(R.string.backing_up_progress, done, total)
-                }
-                WorkInfo.State.SUCCEEDED -> {
-                    binding.statusText.text = if (total > 0) {
-                        getString(R.string.backed_up_count, total)
-                    } else {
-                        getString(R.string.nothing_to_back_up)
-                    }
-                    SyncedPhotosActivity.invalidateCache()
-                }
-                WorkInfo.State.FAILED -> binding.statusText.text = getString(R.string.sync_failed_status)
-                else -> {} // enqueued — leave "Sync started…" showing
-            }
-        }
+        // Progress and outcome are reported by the tag watcher set up in onCreate,
+        // which keeps working across a screen rotation or a trip away from this
+        // activity — an observer registered here would die with it.
+        binding.syncStatusText.text = getString(R.string.sync_started_status)
     }
 
     private fun addDateRange(builder: Data.Builder) {

@@ -32,6 +32,10 @@ object PhotoScanner {
             args += endEpochMs.toString()
         }
         val selection = clauses.joinToString(" AND ").ifEmpty { null }
+        // Newest first, because this feeds the photo-picker grid where recent
+        // photos should be at the top. Anything that assigns sequence numbers
+        // must re-sort ascending first — uploading in this order is what numbered
+        // a library backwards, giving the newest photo index 001.
         val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
 
         val entries = mutableListOf<PhotoEntry>()
@@ -53,7 +57,8 @@ object PhotoScanner {
         val resolver = context.contentResolver
         val groups = LinkedHashMap<String, Pair<String, MutableList<PhotoEntry>>>()
         for (photo in photos) {
-            val location = resolver.openInputStream(photo.contentUri())?.use { stream ->
+            // Unredacted, or the GPS tag won't be there to group by — see OriginalMedia.
+            val location = OriginalMedia.open(resolver, photo.contentUri())?.use { stream ->
                 LocationNaming.readLatLong(stream)
             }?.let { latLong ->
                 LocationNaming.reverseGeocode(context, latLong[0], latLong[1])

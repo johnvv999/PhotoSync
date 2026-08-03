@@ -13,8 +13,32 @@ import java.io.ByteArrayInputStream
  */
 object OrientedBitmap {
 
-    fun decode(bytes: ByteArray): Bitmap? {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    fun decode(bytes: ByteArray): Bitmap? = decode(bytes, BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+
+    /**
+     * Decodes at roughly [maxDimension] pixels on the long edge instead of full
+     * resolution. A 12MP photo is ~48MB decoded, so anything that walks a whole
+     * folder in a loop — the duplicate scan — has to sample down or it will
+     * exhaust the heap long before it finishes.
+     */
+    fun decodeSampled(bytes: ByteArray, maxDimension: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
+        if (longEdge <= 0) return null
+
+        // inSampleSize halves each step, so take the largest power of two that
+        // still leaves the image at or above the target size.
+        var sample = 1
+        while (longEdge / (sample * 2) >= maxDimension) sample *= 2
+
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        return decode(bytes, BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options))
+    }
+
+    /** Applies the EXIF orientation tag from [bytes] to an already-decoded [bitmap]. */
+    private fun decode(bytes: ByteArray, bitmap: Bitmap?): Bitmap? {
+        bitmap ?: return null
 
         val orientation = try {
             ExifInterface(ByteArrayInputStream(bytes))
