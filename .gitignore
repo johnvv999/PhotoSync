@@ -18,3 +18,11 @@
 local.properties
 cloudflare-worker/.wrangler/
 cloudflare-worker/node_modules/
+
+# Personal scratch notes kept alongside the project. This repo is public and
+# PushPhotoSync.bat stages with `git add .`, so anything dropped here otherwise
+# gets published — GoogleDriveForPhotoSync.txt holds LAN addresses, a share
+# name and a Windows username. Listed by name rather than as `*.txt` so a text
+# file you *do* want tracked isn't silently skipped.
+/GoogleDriveForPhotoSync.txt
+/Fix distortion in this panoramic ph.txt
