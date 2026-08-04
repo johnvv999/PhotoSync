@@ -61,12 +61,33 @@
         android:textColor="#0D3B66"
         android:text="@string/edit_intro" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/photosList"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="12dp" />
+        android:layout_marginTop="12dp">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/photosList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Takes over the list area when a scan comes back with nothing, so the
+             outcome is unmistakable rather than a line of text above an
+             unchanged list. -->
+        <TextView
+            android:id="@+id/emptyMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:padding="24dp"
+            android:gravity="center"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#0D3B66"
+            android:visibility="gone" />
+
+    </FrameLayout>
 
     <!-- Shown only while photos are being picked for deletion, on either list. -->
     <LinearLayout

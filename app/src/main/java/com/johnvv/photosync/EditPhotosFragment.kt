@@ -94,7 +94,7 @@ class EditPhotosFragment : Fragment() {
         updateSelectionStatus()
     }
 
-    /** Leaves either picker without deleting anything. */
+    /** Leaves either picker — or the "nothing found" screen — without deleting anything. */
     private fun cancelPicking() {
         selectedForDeletion.clear()
         mode = Mode.BROWSE
@@ -105,6 +105,28 @@ class EditPhotosFragment : Fragment() {
     /** The delete bar belongs to the two picking modes and nothing else. */
     private fun applyMode() {
         binding.deleteBar.visibility = if (mode == Mode.BROWSE) View.GONE else View.VISIBLE
+        binding.deleteButton.visibility = View.VISIBLE
+        binding.emptyMessage.visibility = View.GONE
+        binding.photosList.visibility = View.VISIBLE
+    }
+
+    /**
+     * Replaces the list with a plain statement that the scan found nothing, and
+     * offers only a way back — there is nothing here to tick, so a Delete button
+     * would be the one control that cannot do anything.
+     */
+    private fun showNoRedundantScreen(compared: Int) {
+        mode = Mode.BROWSE
+        selectedForDeletion.clear()
+        binding.photosList.adapter = null
+        editAdapter = null
+
+        binding.photosList.visibility = View.GONE
+        binding.emptyMessage.text = getString(R.string.no_redundant_found)
+        binding.emptyMessage.visibility = View.VISIBLE
+        binding.deleteBar.visibility = View.VISIBLE
+        binding.deleteButton.visibility = View.GONE
+        binding.statusText.text = getString(R.string.no_redundant_compared, compared)
     }
 
     override fun onResume() {
@@ -296,11 +318,7 @@ class EditPhotosFragment : Fragment() {
             }
 
             if (groups.isEmpty()) {
-                // Say how many were examined. "No redundant photos found" alone is
-                // indistinguishable from the button having done nothing, which is
-                // exactly how it reads after a long silent scan.
-                binding.statusText.text = getString(R.string.no_redundant_found, photos.size)
-                showEditList()
+                showNoRedundantScreen(photos.size)
                 setButtonsEnabled(true)
                 return@launch
             }

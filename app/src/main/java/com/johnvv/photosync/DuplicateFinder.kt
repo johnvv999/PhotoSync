@@ -1,6 +1,7 @@
 package com.johnvv.photosync
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
 
@@ -56,11 +57,12 @@ object DuplicateFinder {
                 return@forEachIndexed
             }
             try {
-                val bytes = drive.downloadPhotoBytes(photo.fileId)
-                // A hash only needs a thumbnail's worth of detail, and this loop
-                // covers the whole folder — decoding at full size would blow the
-                // heap well before it got through them.
-                val bitmap = OrientedBitmap.decodeSampled(bytes, maxDimension = 256)
+                // The camera's own embedded preview is plenty for a 9x8 hash and
+                // arrives inside a small header read; only photos without one cost
+                // a full download.
+                val bytes = drive.readEmbeddedThumbnail(photo.fileId)
+                    ?: drive.downloadPhotoBytes(photo.fileId)
+                val bitmap = decodeForHashing(bytes)
                 if (bitmap != null) {
                     val hash = differenceHash(bitmap)
                     hashes[photo.fileId] = hash
@@ -161,6 +163,30 @@ object DuplicateFinder {
             keepIndex = submitted.getOrElse(verdict.keepIndex) { -1 },
             redundantIndices = verdict.redundantIndices.mapNotNull { submitted.getOrNull(it) },
             reason = verdict.reason
+        )
+    }
+
+    /**
+     * Decodes small, and deliberately ignores the EXIF orientation tag.
+     *
+     * Hashes are only comparable if every photo is decoded the same way, and the
+     * two sources here disagree: an embedded preview usually carries no
+     * orientation of its own while the full photo does. Rotating one and not the
+     * other would make a photo hashed from its preview look nothing like the same
+     * photo hashed in full. Ignoring rotation everywhere keeps them aligned, and
+     * costs nothing — two shots of the same scene were held the same way.
+     */
+    private fun decodeForHashing(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
+        if (longEdge <= 0) return null
+
+        var sample = 1
+        while (longEdge / (sample * 2) >= 256) sample *= 2
+        return BitmapFactory.decodeByteArray(
+            bytes, 0, bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample }
         )
     }
 

@@ -271,6 +271,24 @@ class DriveServiceHelper(context: Context, accountName: String) {
         null
     }
 
+    /**
+     * The small preview JPEG cameras embed in a photo's EXIF header, or null if
+     * this one has none.
+     *
+     * Read from the same ~128 KB prefix used for GPS, so getting it costs a
+     * fraction of the full photo. That matters for the duplicate scan, which
+     * would otherwise download every photo in the folder in full just to
+     * compute a 64-bit hash from a 9x8 version of it.
+     */
+    fun readEmbeddedThumbnail(fileId: String): ByteArray? = try {
+        val prefix = downloadPhotoPrefix(fileId)
+        ByteArrayInputStream(prefix).use {
+            androidx.exifinterface.media.ExifInterface(it).thumbnailBytes
+        }
+    } catch (e: Exception) {
+        null
+    }
+
     /** Downloads the raw bytes of [fileId]. */
     fun downloadPhotoBytes(fileId: String): ByteArray {
         downloadCache.get(fileId)?.let { return it }
