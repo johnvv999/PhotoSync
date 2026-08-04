@@ -33,14 +33,9 @@ private class Entry(val photo: DrivePhoto, val label: String)
  *
  * Days are divided in UTC, matching the page, so the two never disagree about
  * which day a photo near midnight belongs to.
- *
- * [unlocatedFirst] lifts photos with no real location into a leading group.
- * The Edit screen wants that — they are the rows it exists to repair — while
- * browsing wants them in their chronological place.
  */
 fun buildSyncedListItems(
     photos: List<DrivePhoto>,
-    unlocatedFirst: Boolean = false,
     label: (DrivePhoto) -> String = { it.cityLabel }
 ): List<SyncedListItem> {
     val items = mutableListOf<SyncedListItem>()
@@ -56,17 +51,9 @@ fun buildSyncedListItems(
         }
     }
 
-    val (unlocated, located) = if (unlocatedFirst) {
-        photos.partition { LocationNaming.isUnlocated(it.name) }
-    } else {
-        emptyList<DrivePhoto>() to photos
-    }
-
-    add(unlocated.sortedWith(compareBy({ it.chronoTimeMs }, { it.name })).map { Entry(it, label(it)) })
-
     // Pass 1 — chronological, with the name breaking ties so the order is
     // stable rather than left to however Drive returned the listing.
-    val ordered = located
+    val ordered = photos
         .sortedWith(compareBy({ it.chronoTimeMs }, { it.name }))
         .map { Entry(it, label(it)) }
 

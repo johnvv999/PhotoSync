@@ -100,7 +100,22 @@ class EditPhotosFragment : Fragment() {
         selectedForDeletion.clear()
         mode = Mode.BROWSE
         showEditList()
-        binding.statusText.text = getString(R.string.edit_photo_count, photos.size)
+        binding.statusText.text = describeFolder()
+    }
+
+    /**
+     * Describes the folder in terms of what this screen shows — how many photos
+     * still need a location — rather than a bare total, which would not match
+     * the list beneath it.
+     */
+    private fun describeFolder(): String {
+        if (photos.isEmpty()) return getString(R.string.no_synced_photos)
+        val needing = photos.count { LocationNaming.isUnlocated(it.name) }
+        return if (needing == 0) {
+            getString(R.string.edit_all_located_count, photos.size)
+        } else {
+            getString(R.string.edit_needing_location, needing, photos.size)
+        }
     }
 
     /**
@@ -193,11 +208,7 @@ class EditPhotosFragment : Fragment() {
             }
             photos = loaded
             showEditList()
-            binding.statusText.text = finalStatus ?: if (loaded.isEmpty()) {
-                getString(R.string.no_synced_photos)
-            } else {
-                getString(R.string.edit_photo_count, loaded.size)
-            }
+            binding.statusText.text = finalStatus ?: describeFolder()
             setButtonsEnabled(true)
         }
     }
@@ -430,11 +441,28 @@ class EditPhotosFragment : Fragment() {
         if (mode == Mode.PICK_REDUNDANT) mode = Mode.BROWSE
         applyMode()
 
-        // Same grouping as the browsing page — chronological, drive-by places
-        // absorbed, repeat visits collapsed — with photos that have no real
-        // location lifted to the top, since they are the rows this screen exists
-        // to repair.
-        val items = buildSyncedListItems(photos, unlocatedFirst = true) { photo ->
+        // Fix Locations is about photos that still lack one, so this list shows
+        // only those. Deleting is a different job and needs the whole library.
+        val visible = if (mode == Mode.PICK_ANY) {
+            photos
+        } else {
+            photos.filter { LocationNaming.isUnlocated(it.name) }
+        }
+
+        if (visible.isEmpty() && photos.isNotEmpty()) {
+            // Nothing left to repair is a result worth stating; an empty list
+            // reads as a failure to load.
+            binding.photosList.adapter = null
+            editAdapter = null
+            binding.photosList.visibility = View.GONE
+            binding.emptyMessage.setText(R.string.all_photos_located)
+            binding.emptyMessage.visibility = View.VISIBLE
+            return
+        }
+
+        // Same grouping as the browsing page: chronological, drive-by places
+        // absorbed, repeat visits collapsed.
+        val items = buildSyncedListItems(visible) { photo ->
             LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL
         }
         val selectable = mode == Mode.PICK_ANY

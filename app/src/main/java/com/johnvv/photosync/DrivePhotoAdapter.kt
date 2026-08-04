@@ -41,6 +41,7 @@ class DrivePhotoAdapter(
 
     class PhotoViewHolder(root: View) : RecyclerView.ViewHolder(root) {
         val thumbnail: ImageView = root.findViewById(R.id.thumbnail)
+        val fileNameText: TextView = root.findViewById(R.id.fileNameText)
         val infoLink: TextView = root.findViewById(R.id.infoLink)
         val mapLink: TextView = root.findViewById(R.id.mapLink)
         val infoResult: TextView = root.findViewById(R.id.infoResult)
@@ -73,6 +74,8 @@ class DrivePhotoAdapter(
     private fun bindPhoto(holder: PhotoViewHolder, photo: DrivePhoto) {
         holder.thumbnailJob?.cancel()
         holder.infoJob?.cancel()
+
+        holder.fileNameText.text = photo.name
 
         val cachedThumb = DrivePhotoCache.thumbnail(photo.fileId)
         if (cachedThumb != null) {

@@ -74,7 +74,9 @@
 
     <!-- Edit tab -->
     <string name="edit_intro">Fix locations, or find redundant photos to delete.</string>
-    <string name="edit_photo_count">%1$d photos in your Drive folder.</string>
+    <string name="edit_needing_location">%1$d of %2$d photos still need a location.</string>
+    <string name="edit_all_located_count">All %1$d photos have a location.</string>
+    <string name="all_photos_located">Every photo has a location.\n\nNothing to fix here.</string>
     <string name="fix_locations">Fix Locations</string>
     <string name="fixing_locations">Reading photos and working out locations…</string>
     <string name="fixing_progress">Fixing %1$d of %2$d…</string>
