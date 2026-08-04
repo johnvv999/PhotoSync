@@ -430,19 +430,11 @@ class EditPhotosFragment : Fragment() {
         if (mode == Mode.PICK_REDUNDANT) mode = Mode.BROWSE
         applyMode()
 
-        // Photos with no real location float to the top. They're the ones this
-        // screen exists to fix, and after a Fix Locations pass they're whatever
-        // the inheritance couldn't reach — so burying them mid-list, in whatever
-        // order they happened to be taken, hides the only rows needing a hand.
-        // Everything else stays chronological beneath them.
-        val ordered = photos.sortedWith(
-            compareBy(
-                { if (LocationNaming.isUnlocated(it.name)) 0 else 1 },
-                { it.chronoTimeMs },
-                { it.name }
-            )
-        )
-        val items = buildSyncedListItems(ordered) { photo ->
+        // Same grouping as the browsing page — chronological, drive-by places
+        // absorbed, repeat visits collapsed — with photos that have no real
+        // location lifted to the top, since they are the rows this screen exists
+        // to repair.
+        val items = buildSyncedListItems(photos, unlocatedFirst = true) { photo ->
             LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL
         }
         val selectable = mode == Mode.PICK_ANY
