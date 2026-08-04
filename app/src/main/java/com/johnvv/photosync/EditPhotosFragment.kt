@@ -88,6 +88,7 @@ class EditPhotosFragment : Fragment() {
             binding.statusText.text = getString(R.string.no_synced_photos)
             return
         }
+        showLoading()
         selectedForDeletion.clear()
         mode = Mode.PICK_ANY
         showEditList()
@@ -100,6 +101,21 @@ class EditPhotosFragment : Fragment() {
         mode = Mode.BROWSE
         showEditList()
         binding.statusText.text = getString(R.string.edit_photo_count, photos.size)
+    }
+
+    /**
+     * Covers the list with "Loading…" until whatever was tapped has something to
+     * show. Every top button leads somewhere that has to be fetched or computed
+     * first, and without this the screen sits on the previous contents looking
+     * like the tap was ignored.
+     *
+     * Cleared by [applyMode], which every finished path goes through.
+     */
+    private fun showLoading() {
+        binding.photosList.visibility = View.GONE
+        binding.emptyMessage.setText(R.string.loading_ellipsis)
+        binding.emptyMessage.visibility = View.VISIBLE
+        binding.deleteBar.visibility = View.GONE
     }
 
     /** The delete bar belongs to the two picking modes and nothing else. */
@@ -157,6 +173,7 @@ class EditPhotosFragment : Fragment() {
     private fun loadPhotos(finalStatus: String? = null) {
         val drive = this.drive ?: return
         binding.statusText.text = getString(R.string.loading_synced_photos)
+        showLoading()
         setButtonsEnabled(false)
         viewLifecycleOwner.lifecycleScope.launch {
             val loaded = try {
@@ -168,6 +185,8 @@ class EditPhotosFragment : Fragment() {
                     drive.listPhotosInFolder(id)
                 }
             } catch (e: Exception) {
+                // Put the list back, or a failure leaves "Loading…" on screen for good.
+                applyMode()
                 binding.statusText.text = getString(R.string.couldnt_load_synced_photos)
                 setButtonsEnabled(true)
                 return@launch
@@ -203,7 +222,7 @@ class EditPhotosFragment : Fragment() {
         // something chosen for a reason that no longer applies.
         selectedForDeletion.clear()
         mode = Mode.BROWSE
-        applyMode()
+        showLoading()
 
         setButtonsEnabled(false)
         binding.statusText.text = getString(R.string.fixing_locations)
@@ -216,6 +235,8 @@ class EditPhotosFragment : Fragment() {
                     }
                 }
             } catch (e: Exception) {
+                // Put the list back, or a failure leaves "Loading…" on screen for good.
+                applyMode()
                 binding.statusText.text = getString(R.string.couldnt_load_synced_photos)
                 setButtonsEnabled(true)
                 return@launch
@@ -305,6 +326,7 @@ class EditPhotosFragment : Fragment() {
         }
         setButtonsEnabled(false)
         selectedForDeletion.clear()
+        showLoading()
         binding.statusText.text = getString(R.string.scanning_for_duplicates)
 
         viewLifecycleOwner.lifecycleScope.launch {

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Navy chip with a light grey underline. Setting a plain background colour on an
+  EditText replaces its whole drawable, which takes the underline with it — this
+  puts one back, so the field still reads as something you can type in.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0D3B66" />
+        </shape>
+    </item>
+
+    <item
+        android:gravity="bottom"
+        android:height="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#B8C9DC" />
+        </shape>
+    </item>
+
+</layer-list>

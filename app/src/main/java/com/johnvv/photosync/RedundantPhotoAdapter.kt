@@ -60,8 +60,10 @@ class RedundantPhotoAdapter(
         const val VIEW_TYPE_HEADER = 0
         const val VIEW_TYPE_PHOTO = 1
 
-        val KEEP_GREEN = Color.parseColor("#1E8E3E")
-        val REDUNDANT_RED = Color.parseColor("#C5221F")
+        // Light variants: this list sits on the Edit page's navy background, where
+        // the darker greens and reds are barely legible.
+        val KEEP_GREEN = Color.parseColor("#81C995")
+        val REDUNDANT_RED = Color.parseColor("#F28B82")
     }
 
     class HeaderViewHolder(root: View) : RecyclerView.ViewHolder(root) {

@@ -58,7 +58,7 @@
         android:layout_marginTop="12dp"
         android:textSize="14sp"
         android:textStyle="bold"
-        android:textColor="#0D3B66"
+        android:textColor="@android:color/white"
         android:text="@string/edit_intro" />
 
     <FrameLayout
@@ -84,7 +84,7 @@
             android:gravity="center"
             android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="#0D3B66"
+            android:textColor="@android:color/white"
             android:visibility="gone" />
 
     </FrameLayout>

@@ -95,6 +95,7 @@
     <string name="scanning_for_duplicates">Looking for similar photos…</string>
     <string name="comparing_progress">Comparing %1$d of %2$d…</string>
     <string name="asking_ai">Asking AI which ones are redundant…</string>
+    <string name="loading_ellipsis">Loading…</string>
     <string name="no_redundant_found">No Redundant Photos Found.</string>
     <string name="no_redundant_compared">Compared %1$d photos. Tap Cancel to go back.</string>
     <string name="not_enough_photos_to_compare_n">Only %1$d photo here — need at least two to compare.</string>

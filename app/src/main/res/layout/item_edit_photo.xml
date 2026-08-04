@@ -39,9 +39,10 @@
         android:layout_marginTop="6dp"
         android:paddingHorizontal="4dp"
         android:textSize="13sp"
-        android:textColor="#5F6368" />
+        android:textColor="#9AA0A6" />
 
     <LinearLayout
+        android:id="@+id/locationRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
@@ -49,6 +50,9 @@
         android:baselineAligned="false"
         android:gravity="center_vertical">
 
+        <!-- White text needs something dark behind it: on the light window
+             background it would be invisible. The navy chip is the same colour
+             as the tab bar, and the hint is lightened to stay legible on it. -->
         <EditText
             android:id="@+id/locationInput"
             android:layout_width="0dp"
@@ -57,7 +61,14 @@
             android:hint="@string/location_hint"
             android:inputType="textCapWords"
             android:maxLines="1"
-            android:textSize="15sp"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_location_field"
+            android:textColor="@android:color/white"
+            android:textColorHint="#B8C9DC"
+            android:textCursorDrawable="@null"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp"
             android:autofillHints="" />
 
         <Button
@@ -75,6 +86,9 @@
 
     </LinearLayout>
 
+    <!-- This page shows through to the activity's navy background, so every
+         colour here has to be a light one. #1A73E8 and the default text colour
+         are near-invisible against it. -->
     <TextView
         android:id="@+id/infoLink"
         android:layout_width="wrap_content"
@@ -82,7 +96,7 @@
         android:layout_marginTop="4dp"
         android:padding="4dp"
         android:text="@string/info_link"
-        android:textColor="#1A73E8"
+        android:textColor="#8AB4F8"
         android:textStyle="bold" />
 
     <TextView
@@ -90,6 +104,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingHorizontal="4dp"
+        android:textColor="#E8EEF4"
         android:visibility="gone" />
 
 </LinearLayout>

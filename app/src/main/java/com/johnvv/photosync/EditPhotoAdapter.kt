@@ -55,6 +55,7 @@ class EditPhotoAdapter(
     class PhotoViewHolder(root: View) : RecyclerView.ViewHolder(root) {
         val thumbnail: ImageView = root.findViewById(R.id.thumbnail)
         val selectCheck: CheckBox = root.findViewById(R.id.selectCheck)
+        val locationRow: View = root.findViewById(R.id.locationRow)
         val fileNameText: TextView = root.findViewById(R.id.fileNameText)
         val locationInput: EditText = root.findViewById(R.id.locationInput)
         val saveLocationButton: Button = root.findViewById(R.id.saveLocationButton)
@@ -134,6 +135,14 @@ class EditPhotoAdapter(
      */
     private fun bindSelection(holder: PhotoViewHolder, photo: DrivePhoto) {
         holder.selectCheck.visibility = if (selectionMode) View.VISIBLE else View.GONE
+
+        // While choosing what to delete, the location field and its Save button
+        // are noise — and worse, an invitation to edit a photo you are about to
+        // remove. Hidden together with the Info link so each row is just the
+        // photo, its name and a tick box.
+        holder.locationRow.visibility = if (selectionMode) View.GONE else View.VISIBLE
+        holder.infoLink.visibility = if (selectionMode) View.GONE else View.VISIBLE
+        if (selectionMode) holder.infoResult.visibility = View.GONE
 
         // Detached before setting the state, so recycling a row into a different
         // photo can't fire a change that edits the wrong selection.
