@@ -453,15 +453,55 @@
     // every day would collapse the journey itself. The day is taken in UTC so
     // the grouping is identical for every viewer, rather than shifting for
     // photos near midnight depending on where the page is opened.
-    const visits = new Map();
+    // Consecutive photos of one place, kept per day. Runs are the unit both of
+    // the steps below work on.
+    const dayRuns = new Map();
     files.forEach((file, i) => {
-      const key = `${(file.createdTime || "").slice(0, 10)}|${resolvedLabels[i]}`;
-      // Map keeps insertion order, and `files` is already chronological, so
-      // groups come out ordered by their first photo of that day.
-      if (!visits.has(key)) visits.set(key, []);
-      visits.get(key).push({ file, label: resolvedLabels[i] });
+      const day = (file.createdTime || "").slice(0, 10);
+      const label = resolvedLabels[i];
+      if (!dayRuns.has(day)) dayRuns.set(day, []);
+      const runs = dayRuns.get(day);
+      const current = runs[runs.length - 1];
+      if (current && current.label === label) current.items.push({ file, label });
+      else runs.push({ label, items: [{ file, label }] });
     });
-    const ordered = Array.from(visits.values()).flat();
+
+    // Absorb one-photo runs into the place around them.
+    //
+    // Passing a village by boat gets a GPS fix and therefore a heading, for a
+    // place never actually visited — a single photo announcing a town of its
+    // own, between two stretches of somewhere real. Those single photos join
+    // the run before them, and the run after if they open the day.
+    //
+    // The heading they end up under is then approximate: a photo taken in
+    // Sommerberg can sit under Passau. That is the point — it belongs to the
+    // Passau stretch of the day — and the photo's own filename, shown on the
+    // card, still says where it was actually taken.
+    dayRuns.forEach((runs) => {
+      for (let i = 0; i < runs.length; i++) {
+        if (runs.length < 2 || runs[i].items.length !== 1) continue;
+        const backwards = i > 0;
+        const target = backwards ? runs[i - 1] : runs[1];
+        const moved = runs[i].items.map((x) => ({ file: x.file, label: target.label }));
+        // Backwards the photo follows the run it joins; forwards it precedes it.
+        if (backwards) target.items.push(...moved);
+        else target.items.unshift(...moved);
+        runs.splice(i, 1);
+        i--; // re-examine this slot, which now holds the following run
+      }
+    });
+
+    // Collapse repeat visits: one heading per place per day, positioned where
+    // that day's first photo of it falls.
+    const ordered = [];
+    dayRuns.forEach((runs) => {
+      const visits = new Map();
+      runs.forEach((run) => {
+        if (!visits.has(run.label)) visits.set(run.label, []);
+        visits.get(run.label).push(...run.items);
+      });
+      visits.forEach((items) => ordered.push(...items));
+    });
 
     contentEl.className = "";
     contentEl.innerHTML = "";
