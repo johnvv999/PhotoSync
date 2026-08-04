@@ -420,21 +420,56 @@
       return;
     }
 
-    files.sort((a, b) => new Date(a.createdTime) - new Date(b.createdTime));
+    // Strictly chronological — date, then time within the day.
+    //
+    // Places group themselves as a consequence, because a day's travel is
+    // sequential: every Passau photo precedes every Schärding photo when that
+    // is the order they were taken. Sorting by country and city inside the day
+    // instead would put Austria before Germany and reverse the trip.
+    //
+    // Name is the tiebreak only for photos sharing an identical timestamp, so
+    // the ordering is stable rather than left to the API's response order.
+    files.sort((a, b) => {
+      const ta = new Date(a.createdTime).getTime() || 0;
+      const tb = new Date(b.createdTime).getTime() || 0;
+      return ta - tb || a.name.localeCompare(b.name);
+    });
 
     contentEl.textContent = "Resolving photo locations…";
-    const cityLabels = [];
+    const resolvedLabels = [];
     for (const file of files) {
-      cityLabels.push(await resolveCityLabel(file));
+      resolvedLabels.push(await resolveCityLabel(file));
     }
+
+    // Collapse repeat visits within a day.
+    //
+    // A day's travel often returns to where it started — out from Passau into
+    // Austria and back — which chronologically produces the same heading twice.
+    // Photos for one place on one day are gathered under a single heading,
+    // placed where that day's first photo of it falls, so the day still reads
+    // in the order it happened: all of Passau, then Schärding.
+    //
+    // Grouping is per day, not across the trip: merging every Passau photo from
+    // every day would collapse the journey itself. The day is taken in UTC so
+    // the grouping is identical for every viewer, rather than shifting for
+    // photos near midnight depending on where the page is opened.
+    const visits = new Map();
+    files.forEach((file, i) => {
+      const key = `${(file.createdTime || "").slice(0, 10)}|${resolvedLabels[i]}`;
+      // Map keeps insertion order, and `files` is already chronological, so
+      // groups come out ordered by their first photo of that day.
+      if (!visits.has(key)) visits.set(key, []);
+      visits.get(key).push({ file, label: resolvedLabels[i] });
+    });
+    const ordered = Array.from(visits.values()).flat();
 
     contentEl.className = "";
     contentEl.innerHTML = "";
 
     let lastCity = null;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const city = cityLabels[i];
+    for (let i = 0; i < ordered.length; i++) {
+      const file = ordered[i].file;
+      const city = ordered[i].label;
       if (city !== lastCity) {
         const header = document.createElement("div");
         header.className = "city-header";
