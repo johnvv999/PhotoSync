@@ -69,6 +69,20 @@
     align-items: center;
     padding: 8px 20px 0;
   }
+  /* Sits between the Info and Map buttons. flex:1 with min-width:0 lets it take
+     the space between them and ellipsis a long filename, rather than growing the
+     row and pushing Map off the edge. */
+  .photo-name {
+    flex: 1;
+    min-width: 0;
+    padding: 0 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .info-link, .map-link {
     font-size: 15px;
     font-weight: 700;
@@ -447,6 +461,14 @@
       infoLink.type = "button";
       infoLink.textContent = "Info";
       linkRow.appendChild(infoLink);
+
+      // textContent, not innerHTML: the filename comes from Drive and is not ours
+      // to trust as markup.
+      const photoName = document.createElement("div");
+      photoName.className = "photo-name";
+      photoName.textContent = file.name;
+      photoName.title = file.name; // full name on hover when it has been truncated
+      linkRow.appendChild(photoName);
 
       const mapLink = document.createElement("button");
       mapLink.className = "map-link";
