@@ -393,7 +393,11 @@
 
     const url = new URL("https://www.googleapis.com/drive/v3/files");
     url.searchParams.set("q", `'${FOLDER_ID}' in parents and trashed=false and mimeType contains 'image/'`);
-    url.searchParams.set("fields", "files(id,name,createdTime,parents,mimeType,trashed)");
+    // `description` carries the AI text the app already worked out for a photo,
+    // and it arrives with the listing at no extra cost — so Info can show it
+    // without a Gemini round trip, and without every visitor paying to be told
+    // the same thing.
+    url.searchParams.set("fields", "files(id,name,description,createdTime,parents,mimeType,trashed)");
     url.searchParams.set("key", DRIVE_API_KEY);
     url.searchParams.set("orderBy", "createdTime");
 
@@ -568,6 +572,18 @@
           return;
         }
         infoResult.classList.add("visible");
+
+        // The app writes its description onto the Drive file, so most photos
+        // already carry one. Showing it is instant, costs no Gemini call, and
+        // means every visitor sees the same text rather than each generating
+        // their own slightly different version of it.
+        const stored = (file.description || "").trim();
+        if (stored) {
+          infoCache.set(file.id, stored);
+          infoResult.textContent = stored;
+          return;
+        }
+
         infoResult.textContent = "Loading info…";
         const description = await describePhoto(file.id, file.mimeType);
         infoCache.set(file.id, description);

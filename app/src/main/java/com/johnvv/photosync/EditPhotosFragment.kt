@@ -45,10 +45,7 @@ class EditPhotosFragment : Fragment() {
         BROWSE,
 
         /** Every photo tickable, so any of them can be deleted. */
-        PICK_ANY,
-
-        /** Only the photos the duplicate scan grouped, tickable. */
-        PICK_REDUNDANT
+        PICK_ANY
     }
 
     private var mode = Mode.BROWSE
@@ -73,7 +70,6 @@ class EditPhotosFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         binding.photosList.layoutManager = LinearLayoutManager(requireContext())
         binding.fixLocationsButton.setOnClickListener { fixLocations() }
-        binding.findRedundantButton.setOnClickListener { findRedundant() }
         binding.deleteSelectedButton.setOnClickListener { startPickingAnyPhoto() }
         binding.deleteButton.setOnClickListener { confirmDelete() }
         binding.cancelButton.setOnClickListener { cancelPicking() }
@@ -141,24 +137,6 @@ class EditPhotosFragment : Fragment() {
         binding.photosList.visibility = View.VISIBLE
     }
 
-    /**
-     * Replaces the list with a plain statement that the scan found nothing, and
-     * offers only a way back — there is nothing here to tick, so a Delete button
-     * would be the one control that cannot do anything.
-     */
-    private fun showNoRedundantScreen(compared: Int) {
-        mode = Mode.BROWSE
-        selectedForDeletion.clear()
-        binding.photosList.adapter = null
-        editAdapter = null
-
-        binding.photosList.visibility = View.GONE
-        binding.emptyMessage.text = getString(R.string.no_redundant_found)
-        binding.emptyMessage.visibility = View.VISIBLE
-        binding.deleteBar.visibility = View.VISIBLE
-        binding.deleteButton.visibility = View.GONE
-        binding.statusText.text = getString(R.string.no_redundant_compared, compared)
-    }
 
     override fun onResume() {
         super.onResume()
@@ -327,55 +305,10 @@ class EditPhotosFragment : Fragment() {
         }
     }
 
-    /** Groups visually similar photos on-device, then has Gemini judge which are truly redundant. */
-    private fun findRedundant() {
-        val drive = this.drive ?: return
-        val account = accountName ?: return
-        if (photos.size < 2) {
-            binding.statusText.text = getString(R.string.not_enough_photos_to_compare_n, photos.size)
-            return
-        }
-        setButtonsEnabled(false)
-        selectedForDeletion.clear()
-        showLoading()
-        binding.statusText.text = getString(R.string.scanning_for_duplicates)
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            val groups = withContext(Dispatchers.IO) {
-                DuplicateFinder.findRedundantGroups(
-                    drive,
-                    photos,
-                    onProgress = { done, total -> reportProgress(R.string.comparing_progress, done, total) },
-                    onStage = { reportStage(R.string.asking_ai) }
-                )
-            }
-
-            if (groups.isEmpty()) {
-                showNoRedundantScreen(photos.size)
-                setButtonsEnabled(true)
-                return@launch
-            }
-
-            mode = Mode.PICK_REDUNDANT
-            applyMode()
-            editAdapter = null // the redundant list replaces it; rebuild on the way back
-            val items = buildRedundantListItems(groups, selectedForDeletion)
-            binding.photosList.adapter = RedundantPhotoAdapter(
-                requireContext(), items, drive, viewLifecycleOwner.lifecycleScope, account, selectedForDeletion
-            ) { updateSelectionStatus() }
-            updateSelectionStatus(groupCount = groups.size)
-            setButtonsEnabled(true)
-        }
-    }
-
-    private fun updateSelectionStatus(groupCount: Int? = null) {
-        binding.statusText.text = when {
-            groupCount != null ->
-                getString(R.string.redundant_found, groupCount, selectedForDeletion.size)
-            mode == Mode.PICK_ANY ->
-                getString(R.string.pick_any_selected, selectedForDeletion.size, photos.size)
-            else -> getString(R.string.redundant_selected, selectedForDeletion.size)
-        }
+    private fun updateSelectionStatus() {
+        binding.statusText.text =
+            getString(R.string.pick_any_selected, selectedForDeletion.size, photos.size)
     }
 
     private fun confirmDelete() {
@@ -438,7 +371,6 @@ class EditPhotosFragment : Fragment() {
     private fun showEditList() {
         val drive = this.drive ?: return
         val account = accountName ?: return
-        if (mode == Mode.PICK_REDUNDANT) mode = Mode.BROWSE
         applyMode()
 
         // Fix Locations is about photos that still lack one, so this list shows
@@ -490,13 +422,9 @@ class EditPhotosFragment : Fragment() {
         }
     }
 
-    private fun reportStage(messageRes: Int) {
-        activity?.runOnUiThread { _binding?.statusText?.text = getString(messageRes) }
-    }
 
     private fun setButtonsEnabled(enabled: Boolean) {
         binding.fixLocationsButton.isEnabled = enabled
-        binding.findRedundantButton.isEnabled = enabled
         binding.deleteSelectedButton.isEnabled = enabled
     }
 

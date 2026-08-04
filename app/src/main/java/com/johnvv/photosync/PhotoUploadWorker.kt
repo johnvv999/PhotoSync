@@ -135,7 +135,12 @@ class PhotoUploadWorker(
                 val cityKeys = inputData.getString(KEY_CITY_KEYS).orEmpty()
                     .split(",").filter { it.isNotBlank() }.toSet()
                 val photos = PhotoScanner.queryPhotos(applicationContext, startEpochMs(), endEpochMs())
-                val matching = PhotoScanner.groupByCity(applicationContext, photos)
+                // Grouping by city opens every photo's EXIF, which on a large
+                // library is minutes of work. Without reporting it the screen sat
+                // on "Sync started…" the whole time, looking like nothing happened.
+                val matching = PhotoScanner.groupByCity(applicationContext, photos) { done, total ->
+                    reportProgress(PHASE_PREPARING, done, total)
+                }
                     .filter { it.locationKey in cityKeys }
                     .flatMap { it.photos }
                 uploadEntries(syncState, drive, indexStore, uploadedStore, excludedStore, rootFolderId, matching)
@@ -184,6 +189,12 @@ class PhotoUploadWorker(
         val toUpload = entries.filter { entry ->
             !excludedStore.isExcluded(entry.id) && (forceDuplicates || !uploadedStore.isUploaded(entry.id))
         }
+
+        // Report before any work starts, so the screen shows a total straight
+        // away. Otherwise the first thing the user sees is "Sync started…" with
+        // no numbers until the first photo's EXIF has been read, which on a
+        // large library reads as nothing happening.
+        reportProgress(PHASE_PREPARING, 0, toUpload.size)
 
         val candidates = resolveLocations(resolver, syncState, toUpload)
         if (isStopped) {

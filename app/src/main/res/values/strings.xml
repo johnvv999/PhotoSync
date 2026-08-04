@@ -49,7 +49,11 @@
     <string name="shared_folder_cleared">Back to this account\'s own folder.</string>
     <string name="invalid_folder_link">Couldn\'t find a folder ID in that link. Paste the full Drive folder link.</string>
     <string name="use_own_folder">Use my own folder</string>
-    <string name="storage_line">%1$d photos using %2$s • %3$s free of %4$s</string>
+    <string name="storage_line">On this phone: %1$d photos using %2$s • %3$s free of %4$s</string>
+    <string name="drive_line_checking">In Google Drive: checking…</string>
+    <string name="drive_line">In Google Drive: %1$d photos</string>
+    <string name="drive_line_unavailable">In Google Drive: couldn\'t check — no connection, or not signed in.</string>
+    <string name="drive_line_no_folder">In Google Drive: no folder yet — sign in on the Settings tab.</string>
     <string name="backing_up_progress">Backing up %1$d of %2$d…</string>
     <string name="backed_up_all_located">Sync complete — backed up %1$d photo(s), all with a location. None tagged NoGPS.</string>
     <string name="backed_up_with_nogps">Sync complete — backed up %1$d photo(s), but %2$d had no GPS and none nearby to copy, so they\'re tagged NoGPS. Fix those on the Edit tab.</string>
@@ -73,7 +77,7 @@
     <string name="reupload_ready">Ready to re-upload. Now go to Sync → Sync Options → Sync All and start the sync.</string>
 
     <!-- Edit tab -->
-    <string name="edit_intro">Fix locations, or find redundant photos to delete.</string>
+    <string name="edit_intro">Fix locations, or delete photos.</string>
     <string name="edit_needing_location">%1$d of %2$d photos still need a location.</string>
     <string name="edit_all_located_count">All %1$d photos have a location.</string>
     <string name="all_photos_located">Every photo has a location.\n\nNothing to fix here.</string>
@@ -92,21 +96,7 @@
     <string name="renamed_to">Renamed to %1$s</string>
     <string name="rename_failed">Couldn\'t rename %1$s — Drive wouldn\'t allow it.</string>
 
-    <!-- Redundant photos -->
-    <string name="find_redundant">Find Redundant</string>
-    <string name="scanning_for_duplicates">Looking for similar photos…</string>
-    <string name="comparing_progress">Comparing %1$d of %2$d…</string>
-    <string name="asking_ai">Asking AI which ones are redundant…</string>
     <string name="loading_ellipsis">Loading…</string>
-    <string name="no_redundant_found">No Redundant Photos Found.</string>
-    <string name="no_redundant_compared">Compared %1$d photos. Tap Cancel to go back.</string>
-    <string name="not_enough_photos_to_compare_n">Only %1$d photo here — need at least two to compare.</string>
-    <string name="redundant_found">Found %1$d group(s) of similar photos — %2$d selected to delete.</string>
-    <string name="redundant_selected">%1$d selected to delete.</string>
-    <string name="redundant_group_title">Group %1$d — %2$d similar photos</string>
-    <string name="redundant_no_ai_verdict">AI couldn\'t review this group — pick manually.</string>
-    <string name="redundant_keep_label">AI suggests keeping this one</string>
-    <string name="redundant_delete_label">AI says redundant</string>
 
     <!-- Deleting -->
     <string name="delete_selected">Delete Selected</string>

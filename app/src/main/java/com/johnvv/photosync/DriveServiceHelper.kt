@@ -153,8 +153,8 @@ class DriveServiceHelper(context: Context, accountName: String) {
                 .setPageSize(1000)
                 .setPageToken(pageToken)
                 .setFields(
-                    "nextPageToken, files(id, name, mimeType, createdTime, appProperties, " +
-                        "imageMediaMetadata(time, location))"
+                    "nextPageToken, files(id, name, description, mimeType, createdTime, " +
+                        "appProperties, imageMediaMetadata(time, location))"
                 )
                 .execute()
             files += result.files.orEmpty()
@@ -173,6 +173,7 @@ class DriveServiceHelper(context: Context, accountName: String) {
                 DrivePhoto(
                     fileId = file.id,
                     name = file.name,
+                    description = file.description,
                     createdTimeMs = createdMs,
                     cityLabel = cityLabelFromName(file.name),
                     lat = location?.latitude,
@@ -227,6 +228,48 @@ class DriveServiceHelper(context: Context, accountName: String) {
         // modifiedTime, and fully corrected only by re-uploading.
         takenTimeMs?.takeIf { it > 0 }?.let { metadata.modifiedTime = DateTime(it) }
         service.files().update(fileId, metadata).setFields("id").execute()
+    }
+
+    /**
+     * How many images are in [folderId].
+     *
+     * Asks for ids alone, so a folder of several hundred costs a couple of small
+     * metadata pages rather than the full listing [listPhotosInFolder] fetches.
+     */
+    fun countPhotosInFolder(folderId: String): Int {
+        var count = 0
+        var pageToken: String? = null
+        do {
+            val result = service.files().list()
+                .setQ("'$folderId' in parents and trashed=false and mimeType contains 'image/'")
+                .setSpaces("drive")
+                .setPageSize(1000)
+                .setPageToken(pageToken)
+                .setFields("nextPageToken, files(id)")
+                .execute()
+            count += result.files.orEmpty().size
+            pageToken = result.nextPageToken
+        } while (pageToken != null)
+        return count
+    }
+
+    /**
+     * Stores [text] as the file's Drive description.
+     *
+     * Drive gives every file a description field of up to 4096 characters, which
+     * is ample for a few sentences and — unlike appProperties, capped at 124
+     * bytes an entry — needs no splitting. Putting it there means a photo is
+     * described once and then read by anything with access, including the public
+     * browsing page, instead of every viewer paying for the same answer.
+     *
+     * files.update patches only the fields it is given, so this leaves the name,
+     * timestamps and appProperties alone.
+     */
+    fun setDescription(fileId: String, text: String) {
+        service.files()
+            .update(fileId, DriveFile().apply { description = text })
+            .setFields("id")
+            .execute()
     }
 
     /**
@@ -313,6 +356,8 @@ data class RootFolderResult(val id: String, val wasCreated: Boolean)
 data class DrivePhoto(
     val fileId: String,
     val name: String,
+    /** The AI description stored on the Drive file, or null if it has none yet. */
+    val description: String? = null,
     val createdTimeMs: Long,
     val cityLabel: String,
     val lat: Double? = null,

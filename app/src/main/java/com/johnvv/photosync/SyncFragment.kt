@@ -49,6 +49,38 @@ class SyncFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         updateStorageStats()
+        updateDriveCount()
+    }
+
+    /**
+     * How many photos are actually in the Drive folder, shown beside the phone's
+     * own count. The pair is what answers "did the sync finish?" — a number that
+     * lags the phone's is the only visible sign that photos are still missing.
+     */
+    private fun updateDriveCount() {
+        val syncState = SyncState(requireContext())
+        val account = syncState.selectedAccountName
+        val folderId = syncState.rootFolderId
+        if (account == null || folderId == null) {
+            binding.driveText.setText(R.string.drive_line_no_folder)
+            return
+        }
+
+        binding.driveText.setText(R.string.drive_line_checking)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val count = withContext(Dispatchers.IO) {
+                try {
+                    DriveServiceHelper(requireContext(), account).countPhotosInFolder(folderId)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            binding.driveText.text = if (count == null) {
+                getString(R.string.drive_line_unavailable)
+            } else {
+                getString(R.string.drive_line, count)
+            }
+        }
     }
 
     /**
@@ -68,6 +100,9 @@ class SyncFragment : Fragment() {
             if (snapshot?.running == false && wasRunning) {
                 SyncedPhotosActivity.invalidateCache()
                 updateStorageStats()
+                // Re-count now that the run has ended — this is the number that
+                // says whether it actually got everything up.
+                updateDriveCount()
             }
             wasRunning = snapshot?.running == true
         }
@@ -76,6 +111,7 @@ class SyncFragment : Fragment() {
     /** Cancels whatever sync is in flight, whichever screen started it. */
     private fun stopSync() {
         WorkManager.getInstance(requireContext()).cancelAllWorkByTag(PhotoUploadWorker.TAG_UPLOAD)
+        updateDriveCount()
         // Recorded here as well as by the worker: cancellation only takes effect
         // when the worker next checks, so without this the screen would keep
         // showing progress for a second or two after the tap and look ignored.

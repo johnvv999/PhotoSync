@@ -61,10 +61,15 @@ object PhotoScanner {
      * which puts the picker's checkboxes in an order that reads as arbitrary;
      * sorting them means every city of a country sits together.
      */
-    fun groupByCity(context: Context, photos: List<PhotoEntry>): List<CityGroup> {
+    fun groupByCity(
+        context: Context,
+        photos: List<PhotoEntry>,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): List<CityGroup> {
         val resolver = context.contentResolver
         val groups = LinkedHashMap<String, Pair<PhotoLocation, MutableList<PhotoEntry>>>()
-        for (photo in photos) {
+        photos.forEachIndexed { index, photo ->
+            onProgress(index + 1, photos.size)
             // Unredacted, or the GPS tag won't be there to group by — see OriginalMedia.
             val location = OriginalMedia.open(resolver, photo.contentUri())?.use { stream ->
                 LocationNaming.readLatLong(stream)
