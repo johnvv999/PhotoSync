@@ -75,7 +75,9 @@ class DrivePhotoAdapter(
         holder.thumbnailJob?.cancel()
         holder.infoJob?.cancel()
 
-        holder.fileNameText.text = photo.name
+        // Without the extension: every photo here is a .jpg, so it is four
+        // characters of noise competing for the space between the two links.
+        holder.fileNameText.text = photo.name.substringBeforeLast('.')
 
         val cachedThumb = DrivePhotoCache.thumbnail(photo.fileId)
         if (cachedThumb != null) {

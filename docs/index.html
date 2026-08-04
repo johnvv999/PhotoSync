@@ -542,11 +542,12 @@
       linkRow.appendChild(infoLink);
 
       // textContent, not innerHTML: the filename comes from Drive and is not ours
-      // to trust as markup.
+      // to trust as markup. The extension is dropped — every photo here is a
+      // .jpg, so it is four characters of noise in a space that is already tight.
       const photoName = document.createElement("div");
       photoName.className = "photo-name";
-      photoName.textContent = file.name;
-      photoName.title = file.name; // full name on hover when it has been truncated
+      photoName.textContent = file.name.replace(/\.[^/.]+$/, "");
+      photoName.title = file.name; // full name, extension and all, on hover
       linkRow.appendChild(photoName);
 
       const mapLink = document.createElement("button");
