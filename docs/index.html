@@ -671,10 +671,11 @@
       infoResult.className = "info-result";
       card.appendChild(infoResult);
 
-      const mapEmbed = document.createElement("iframe");
-      mapEmbed.className = "map-embed";
-      mapEmbed.loading = "lazy";
-      card.appendChild(mapEmbed);
+      // The map iframe is built on first use, not up front. Even with lazy
+      // loading an iframe is a whole nested browsing context, and a hundred of
+      // them cost enough main-thread work during render that a reply already
+      // sitting in memory can't be painted for several seconds.
+      let mapEmbed = null;
 
       infoLink.addEventListener("click", async () => {
         const cached = infoCache.get(file.id);
@@ -745,8 +746,12 @@
           return;
         }
         if (mapState !== "found" || !mapCoords) return;
-        if (!mapEmbed.src) {
+        if (!mapEmbed) {
+          mapEmbed = document.createElement("iframe");
+          mapEmbed.className = "map-embed";
+          mapEmbed.loading = "lazy";
           mapEmbed.src = `https://maps.google.com/maps?q=${mapCoords.lat},${mapCoords.lon}&z=15&output=embed`;
+          card.appendChild(mapEmbed);
         }
         mapEmbed.classList.toggle("visible");
       });
