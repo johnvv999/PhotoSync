@@ -357,24 +357,57 @@
     return result;
   }
 
-  async function describePhoto(fileId, mimeType) {
+  function proxyPost(payload) {
+    return fetch(GEMINI_PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * Asks the proxy whether this photo already has a description, without
+   * sending the photo.
+   *
+   * Worth its own round trip: describing a photo means downloading it at
+   * 1600px and posting it back as base64, several megabytes over whatever
+   * connection the visitor is on. Once anyone has described a photo, nobody
+   * else should pay that again.
+   */
+  async function lookupDescription(file) {
+    try {
+      const res = await proxyPost({ mode: "lookup", photoId: file.id, version: file.md5Checksum });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.text || null;
+    } catch (e) {
+      // A lookup that fails just means doing it the long way.
+      return null;
+    }
+  }
+
+  async function describePhoto(file) {
     if (!GEMINI_PROXY_URL || GEMINI_PROXY_URL === "YOUR_WORKER_URL_HERE") {
       return "Info isn't configured for this page yet.";
     }
     try {
-      const base64Image = await fetchImageAsBase64(fileId);
-      const payload = { mimeType: mimeType || "image/jpeg", data: base64Image };
+      const base64Image = await fetchImageAsBase64(file.id);
+      const payload = {
+        mimeType: file.mimeType || "image/jpeg",
+        data: base64Image,
+        // Named so the proxy can remember the answer for the next visitor. The
+        // checksum ties it to this photo's content, so replacing the photo
+        // retires the old description rather than outliving it.
+        photoId: file.id,
+        version: file.md5Checksum,
+      };
       // Include GPS (if we've resolved it) so Gemini can pin the actual location.
-      const gps = await getGpsForPhoto(fileId);
+      const gps = await getGpsForPhoto(file.id);
       if (gps.ok && gps.coords) {
         payload.lat = gps.coords.lat;
         payload.lon = gps.coords.lon;
       }
-      const res = await fetch(GEMINI_PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await proxyPost(payload);
       const data = await res.json();
       if (!res.ok) {
         return data.error || `Request failed (${res.status})`;
@@ -396,8 +429,10 @@
     // `description` carries the AI text the app already worked out for a photo,
     // and it arrives with the listing at no extra cost — so Info can show it
     // without a Gemini round trip, and without every visitor paying to be told
-    // the same thing.
-    url.searchParams.set("fields", "files(id,name,description,createdTime,parents,mimeType,trashed)");
+    // the same thing. `md5Checksum` keys the proxy's cache of descriptions this
+    // page generated itself: it changes only if the image content does, so a
+    // rename (which PhotoSync does routinely) doesn't discard the text.
+    url.searchParams.set("fields", "files(id,name,description,createdTime,parents,mimeType,trashed,md5Checksum)");
     url.searchParams.set("key", DRIVE_API_KEY);
     url.searchParams.set("orderBy", "createdTime");
 
@@ -586,7 +621,17 @@
         }
 
         infoResult.textContent = "Loading info…";
-        const description = await describePhoto(file.id, file.mimeType);
+
+        // Photos the app never described fall to whoever opens them first here.
+        // The proxy keeps that result, so this is a lookup for everyone after.
+        const remembered = await lookupDescription(file);
+        if (remembered) {
+          infoCache.set(file.id, remembered);
+          infoResult.textContent = remembered;
+          return;
+        }
+
+        const description = await describePhoto(file);
         infoCache.set(file.id, description);
         infoResult.textContent = description;
       });

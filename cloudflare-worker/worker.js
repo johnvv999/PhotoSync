@@ -20,6 +20,12 @@
 //     APK either way) — worst case is your free-tier Gemini quota getting
 //     used up, not a credential compromise.
 //
+// One optional binding, created with `wrangler kv namespace create
+// DESCRIPTIONS` and pasted into wrangler.toml:
+//   DESCRIPTIONS — remembers each photo's description so it is generated once
+//     for everyone rather than once per visitor. Everything still works
+//     without it, minus the remembering.
+//
 // The public page is instead authorized via CORS: only requests whose
 // Origin header matches ALLOWED_ORIGIN are accepted, so a plain <script>
 // fetch from any other site is rejected server-side (CORS headers alone
@@ -52,6 +58,51 @@ const COMPARE_PROMPT =
 
 const MAX_COMPARE_IMAGES = 8;
 const TOKEN_SCOPE = "https://www.googleapis.com/auth/generative-language";
+
+// Descriptions are kept in a KV namespace so a photo is only ever described
+// once for the whole world, not once per visitor per browser.
+//
+// The Android app has its own store — it writes the text onto the Drive file,
+// which the public page then reads for free — but the page can't do the same:
+// it reads Drive with an anonymous API key and has no credential to write
+// anything back. Without this, every visitor regenerated the text for every
+// photo the app hadn't already described, paying the wait and the quota each
+// time, and each seeing slightly different wording.
+//
+// The binding is optional on purpose: with no namespace attached the Worker
+// still answers normally, just without remembering. That keeps a missing or
+// mistyped binding from taking the page's Info button down with it.
+const CACHE_PREFIX = "desc:v1:";
+
+/**
+ * Cache key for a photo. [version] should be something that changes when the
+ * image content does — the page passes Drive's md5Checksum. Ids alone would
+ * serve a stale description forever if a photo were ever replaced in place,
+ * and modifiedTime would throw the cache away every time PhotoSync renamed a
+ * file, which it does routinely when fixing locations.
+ */
+function cacheKey(photoId, version) {
+  return version ? `${CACHE_PREFIX}${photoId}:${version}` : `${CACHE_PREFIX}${photoId}`;
+}
+
+async function readCachedDescription(env, photoId, version) {
+  if (!env.DESCRIPTIONS || !photoId) return null;
+  try {
+    return await env.DESCRIPTIONS.get(cacheKey(photoId, version));
+  } catch {
+    // A cache that can't be read is a slow path, not a failure.
+    return null;
+  }
+}
+
+async function writeCachedDescription(env, photoId, version, text) {
+  if (!env.DESCRIPTIONS || !photoId || !text) return;
+  try {
+    await env.DESCRIPTIONS.put(cacheKey(photoId, version), text);
+  } catch {
+    // Same reasoning: the caller already has its answer.
+  }
+}
 
 // Cached across requests within the same Worker isolate — avoids minting a
 // fresh access token (an extra round trip to Google) on every photo. Isolates
@@ -168,7 +219,19 @@ export default {
       return json({ error: "Invalid JSON body" }, 400, headers);
     }
 
-    const { mode, images, mimeType, data, lat, lon } = body;
+    const { mode, images, mimeType, data, lat, lon, photoId, version } = body;
+
+    // A request naming a photo but carrying no image is a cache lookup. It
+    // exists so the page can find out whether a description is already known
+    // *before* downloading the photo to send here — on a hit that saves a
+    // multi-megabyte download on someone's phone, which is the slowest part of
+    // the whole exchange.
+    if (mode === "lookup" || (photoId && !data && mode !== "compare")) {
+      const hit = await readCachedDescription(env, photoId, version);
+      return hit
+        ? json({ text: hit, cached: true }, 200, headers)
+        : json({ miss: true }, 200, headers);
+    }
 
     // Two request shapes: the original single-image "describe this photo", and
     // the app's multi-image duplicate comparison.
@@ -198,6 +261,13 @@ export default {
         prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
       }
       imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
+
+      // Checked again even though the caller was meant to look first: two
+      // people opening the same photo at once both miss the lookup, and a
+      // caller that skips it entirely (the app) shouldn't pay for a second
+      // description of a photo already in the cache.
+      const hit = await readCachedDescription(env, photoId, version);
+      if (hit) return json({ text: hit, cached: true }, 200, headers);
     }
 
     let accessToken;
@@ -229,6 +299,14 @@ export default {
     }
 
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-    return json({ text: text ? text.trim() : "No description returned." }, 200, headers);
+    const description = text ? text.trim() : "No description returned.";
+
+    // Only a real description is worth keeping — caching "No description
+    // returned." would make one bad response permanent for that photo.
+    if (mode !== "compare" && text) {
+      await writeCachedDescription(env, photoId, version, description);
+    }
+
+    return json({ text: description }, 200, headers);
   },
 };

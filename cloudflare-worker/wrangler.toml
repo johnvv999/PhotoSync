@@ -1,3 +1,16 @@
 name = "photosync-gemini-proxy"
 main = "worker.js"
 compatibility_date = "2024-09-23"
+
+# Where photo descriptions are remembered, so each photo is described once for
+# everyone instead of once per visitor. Create it with:
+#
+#   wrangler kv namespace create DESCRIPTIONS
+#
+# and paste the id it prints over the placeholder below. Until then, leave this
+# block commented out — the Worker runs fine without the binding, it just
+# doesn't remember anything.
+#
+# [[kv_namespaces]]
+# binding = "DESCRIPTIONS"
+# id = "PASTE_NAMESPACE_ID_HERE"
