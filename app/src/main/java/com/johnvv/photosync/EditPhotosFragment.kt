@@ -106,7 +106,7 @@ class EditPhotosFragment : Fragment() {
             addView(input)
         }
 
-        AlertDialog.Builder(requireContext())
+        val dialog = AlertDialog.Builder(requireContext())
             .setTitle(R.string.start_at_title)
             .setMessage(getString(R.string.start_at_message, photos.size))
             .setView(frame)
@@ -117,7 +117,18 @@ class EditPhotosFragment : Fragment() {
                 beginPicking(typed.coerceIn(1, photos.size))
             }
             .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            .create()
+
+        dialog.show()
+        // Widened to the screen, after show() — which is when there is a window
+        // to resize. Asking for MATCH_PARENT alone isn't enough: the dialog
+        // theme's background is an inset drawable, and it holds the panel off
+        // the edges however wide the window gets. Replacing it with the same
+        // rounded panel minus the inset is what lets the width take effect.
+        dialog.window?.apply {
+            setBackgroundDrawableResource(R.drawable.bg_dialog_full_width)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
     }
 
     private fun beginPicking(startAt: Int) {
