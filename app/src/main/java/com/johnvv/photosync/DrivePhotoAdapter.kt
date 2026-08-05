@@ -85,8 +85,17 @@ class DrivePhotoAdapter(
         } else {
             holder.thumbnail.setImageDrawable(null)
             holder.thumbnailJob = scope.launch {
-                val bytes = withContext(Dispatchers.IO) { DrivePhotoCache.bytes(drive, photo.fileId) }
-                val bitmap = bytes?.let { withContext(Dispatchers.Default) { OrientedBitmap.decode(it) } }
+                val bytes = PhotoDownloads.withSlot {
+                    withContext(Dispatchers.IO) { DrivePhotoCache.bytes(drive, photo.fileId) }
+                }
+                // Sampled to row size rather than decoded whole: tapping through
+                // to fullscreen re-decodes at full resolution, and that is the
+                // only place the extra pixels are ever seen.
+                val bitmap = bytes?.let {
+                    withContext(Dispatchers.Default) {
+                        OrientedBitmap.decodeSampled(it, OrientedBitmap.LIST_THUMBNAIL_PX)
+                    }
+                }
                 if (bitmap != null) {
                     DrivePhotoCache.putThumbnail(photo.fileId, bitmap)
                     holder.thumbnail.setImageBitmap(bitmap)

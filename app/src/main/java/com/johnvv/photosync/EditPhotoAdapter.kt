@@ -110,8 +110,18 @@ class EditPhotoAdapter(
         } else {
             holder.thumbnail.setImageDrawable(null)
             holder.thumbnailJob = scope.launch {
-                val bytes = withContext(Dispatchers.IO) { DrivePhotoCache.bytes(drive, photo.fileId) }
-                val bitmap = bytes?.let { withContext(Dispatchers.Default) { OrientedBitmap.decode(it) } }
+                val bytes = PhotoDownloads.withSlot {
+                    withContext(Dispatchers.IO) { DrivePhotoCache.bytes(drive, photo.fileId) }
+                }
+                // Sampled down to row size. This list can run to the whole
+                // folder — it is the one screen that shows every photo — and at
+                // full resolution a few screens of scrolling is a heap's worth
+                // of bitmaps.
+                val bitmap = bytes?.let {
+                    withContext(Dispatchers.Default) {
+                        OrientedBitmap.decodeSampled(it, OrientedBitmap.LIST_THUMBNAIL_PX)
+                    }
+                }
                 if (bitmap != null) {
                     DrivePhotoCache.putThumbnail(photo.fileId, bitmap)
                     holder.thumbnail.setImageBitmap(bitmap)

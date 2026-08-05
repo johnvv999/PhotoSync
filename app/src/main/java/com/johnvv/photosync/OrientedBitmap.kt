@@ -13,13 +13,20 @@ import java.io.ByteArrayInputStream
  */
 object OrientedBitmap {
 
+    /**
+     * Roughly what a photo needs to fill a list row on a phone screen. Well
+     * short of the 12MP a decode at full size would give, and the difference
+     * is the difference between 1MB and 48MB a row.
+     */
+    const val LIST_THUMBNAIL_PX = 1024
+
     fun decode(bytes: ByteArray): Bitmap? = decode(bytes, BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
 
     /**
      * Decodes at roughly [maxDimension] pixels on the long edge instead of full
-     * resolution. A 12MP photo is ~48MB decoded, so anything that walks a whole
-     * folder in a loop — the duplicate scan — has to sample down or it will
-     * exhaust the heap long before it finishes.
+     * resolution. A 12MP photo is ~48MB decoded, so anything showing a folder's
+     * worth at once has to sample down or it will exhaust the heap partway down
+     * the list.
      */
     fun decodeSampled(bytes: ByteArray, maxDimension: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

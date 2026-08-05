@@ -55,7 +55,22 @@ class DriveServiceHelper(context: Context, accountName: String) {
 
     private val appContext = context.applicationContext
     private val service: Drive
-    private val downloadCache = LruCache<String, ByteArray>(32)
+    /**
+     * Recently downloaded photos, measured in bytes.
+     *
+     * It was bounded at 32 entries, which for photos means 32 files of whatever
+     * size they happen to be — well over a hundred megabytes of a heap capped
+     * at 256, and that is per helper: every screen builds its own. Two screens
+     * open was the whole heap spoken for before anything drew.
+     *
+     * Kept small because [DrivePhotoCache] already holds a process-wide byte
+     * cache over the same downloads; this one only spares an immediate repeat.
+     */
+    private val downloadCache = object : LruCache<String, ByteArray>(
+        (Runtime.getRuntime().maxMemory() / 32).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    ) {
+        override fun sizeOf(key: String, value: ByteArray) = value.size
+    }
 
     init {
         val credential = GoogleAccountCredential.usingOAuth2(
