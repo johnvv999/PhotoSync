@@ -48,23 +48,43 @@ object DrivePhotoInfo {
             return stored
         }
 
+        // Not on the file, but somebody may still have described it — the
+        // browsing page can only leave its answers in the proxy's cache, having
+        // no credential to write to Drive. Asking costs one small request; not
+        // asking costs a photo download and a Gemini call to be told what is
+        // already known.
+        GeminiClient.lookupDescription(photo.fileId, photo.md5Checksum)?.let { remembered ->
+            DrivePhotoCache.putDescription(photo.fileId, remembered)
+            // Copied onto the file, so from now on it arrives with the listing
+            // and nobody needs to ask at all.
+            storeOnDrive(drive, photo, remembered)
+            return remembered
+        }
+
         val bytes = DrivePhotoCache.bytes(drive, photo.fileId) ?: return null
         val gps = coords(drive, photo)
-        val description = GeminiClient.describeImage(bytes, gps?.get(0), gps?.get(1))
+        val description = GeminiClient.describeImage(
+            bytes, gps?.get(0), gps?.get(1), photo.fileId, photo.md5Checksum
+        )
         DrivePhotoCache.putDescription(photo.fileId, description)
 
-        // Best effort, and only for a real answer: a network hiccup returns
-        // ordinary text, and writing that to the file would make one bad moment
-        // permanent for every future viewer. A 403 here just means the photo was
-        // not uploaded by this app, which drive.file cannot modify.
-        if (!looksLikeFailure(description)) {
-            try {
-                drive.setDescription(photo.fileId, description)
-            } catch (e: Exception) {
-                Log.w(TAG, "Couldn't store description for ${photo.name}", e)
-            }
-        }
+        storeOnDrive(drive, photo, description)
         return description
+    }
+
+    /**
+     * Best effort, and only for a real answer: a network hiccup returns ordinary
+     * text, and writing that to the file would make one bad moment permanent for
+     * every future viewer. A 403 here just means the photo was not uploaded by
+     * this app, which drive.file cannot modify.
+     */
+    private fun storeOnDrive(drive: DriveServiceHelper, photo: DrivePhoto, description: String) {
+        if (looksLikeFailure(description)) return
+        try {
+            drive.setDescription(photo.fileId, description)
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't store description for ${photo.name}", e)
+        }
     }
 
     private fun looksLikeFailure(text: String): Boolean =

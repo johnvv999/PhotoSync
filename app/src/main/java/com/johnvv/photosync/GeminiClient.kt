@@ -16,8 +16,41 @@ import java.net.URL
  */
 object GeminiClient {
 
+    /**
+     * Asks the proxy whether this photo has already been described, without
+     * sending the photo. Null when it hasn't, or when the proxy can't be
+     * reached — either way the caller falls back to describing it properly.
+     *
+     * Worth a round trip of its own: the alternative is downloading the photo
+     * and posting it back, and descriptions written by the public browsing page
+     * live only in the proxy's cache — the page has no credential to write them
+     * onto the Drive file, so without asking, the app pays Gemini again for a
+     * photo somebody has already described.
+     *
+     * Blocking network call — run this from a background dispatcher.
+     */
+    fun lookupDescription(photoId: String, version: String?): String? {
+        if (BuildConfig.GEMINI_PROXY_URL.isBlank()) return null
+        val body = JSONObject().apply {
+            put("mode", "lookup")
+            put("photoId", photoId)
+            if (version != null) put("version", version)
+        }
+        return try {
+            post(body).optString("text").takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Blocking network call — run this from a background dispatcher. */
-    fun describeImage(imageBytes: ByteArray, lat: Double? = null, lon: Double? = null): String {
+    fun describeImage(
+        imageBytes: ByteArray,
+        lat: Double? = null,
+        lon: Double? = null,
+        photoId: String? = null,
+        version: String? = null
+    ): String {
         if (BuildConfig.GEMINI_PROXY_URL.isBlank()) {
             return "No Gemini proxy configured. Add GEMINI_PROXY_URL to local.properties and rebuild."
         }
@@ -37,6 +70,12 @@ object GeminiClient {
             if (lat != null && lon != null) {
                 put("lat", lat)
                 put("lon", lon)
+            }
+            // Named so the proxy keeps the answer for whoever asks next —
+            // this phone, another device, or the browsing page.
+            if (photoId != null) {
+                put("photoId", photoId)
+                if (version != null) put("version", version)
             }
         }
 

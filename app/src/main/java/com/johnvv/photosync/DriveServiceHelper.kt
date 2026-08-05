@@ -167,9 +167,14 @@ class DriveServiceHelper(context: Context, accountName: String) {
                 .setSpaces("drive")
                 .setPageSize(1000)
                 .setPageToken(pageToken)
+                // md5Checksum keys the proxy's description cache, and it is what
+                // the browsing page keys on too — so a photo described in one
+                // place is found by the other. It changes only with the image's
+                // content, so renaming (which Fix Locations does routinely)
+                // doesn't orphan the text.
                 .setFields(
                     "nextPageToken, files(id, name, description, mimeType, createdTime, " +
-                        "appProperties, imageMediaMetadata(time, location))"
+                        "md5Checksum, appProperties, imageMediaMetadata(time, location))"
                 )
                 .execute()
             files += result.files.orEmpty()
@@ -189,6 +194,7 @@ class DriveServiceHelper(context: Context, accountName: String) {
                     fileId = file.id,
                     name = file.name,
                     description = file.description,
+                    md5Checksum = file.md5Checksum,
                     createdTimeMs = createdMs,
                     cityLabel = cityLabelFromName(file.name),
                     lat = location?.latitude,
@@ -373,6 +379,8 @@ data class DrivePhoto(
     val name: String,
     /** The AI description stored on the Drive file, or null if it has none yet. */
     val description: String? = null,
+    /** Content hash from Drive; keys the proxy's shared description cache. */
+    val md5Checksum: String? = null,
     val createdTimeMs: Long,
     val cityLabel: String,
     val lat: Double? = null,
