@@ -150,6 +150,29 @@
   /** fileId -> the in-flight GPS read, so two callers share one download. */
   const gpsInFlight = new Map();
 
+  /**
+   * Runs a card's deferred work when it comes near the viewport.
+   *
+   * Deciding whether a photo's Map link lights up means downloading part of it
+   * and parsing the EXIF, and doing that for the whole folder on load is a
+   * hundred downloads and a hundred parses for photos nobody has scrolled to.
+   * That work is what kept the page from painting an answer it already had.
+   *
+   * A screen's worth of margin means the answer is normally ready before the
+   * card is actually looked at.
+   */
+  const nearViewport = new IntersectionObserver(
+    (entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        const run = entry.target.whenNear;
+        if (run) run();
+      }
+    },
+    { rootMargin: "600px" }
+  );
+
   /** Parses "Country_City" from this app's own upload naming convention, or null if it doesn't match. */
   // Tokens the uploader writes when it couldn't work out where a photo was
   // taken. "Unsorted_NoGPS_001.jpg" is not a photo from a place called NoGPS,
@@ -738,6 +761,12 @@
       }
 
       mapLink.addEventListener("click", () => {
+        // Tapping before the deferred read has run: do it now rather than
+        // leave the button looking inert.
+        if (mapState === "checking") {
+          refreshMapState();
+          return;
+        }
         if (mapState === "error") {
           mapLink.textContent = "Map ⟳ …";
           mapLink.disabled = true;
@@ -756,9 +785,11 @@
         mapEmbed.classList.toggle("visible");
       });
 
-      refreshMapState();
-
       contentEl.appendChild(card);
+      // Observed only once it's in the document, or there is nothing for the
+      // observer to measure against.
+      card.whenNear = refreshMapState;
+      nearViewport.observe(card);
     }
   }
 
