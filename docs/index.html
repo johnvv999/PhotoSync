@@ -267,25 +267,51 @@
     });
   }
 
-  // Downloads the original file (=d) from Google's CORS-friendly user-content
-  // CDN to read its EXIF GPS tag. The Drive API's ?alt=media download no longer
-  // permits browser fetch (CORS), and the CDN's resized variants strip EXIF, so
-  // the original is needed here. Capped at 10s so a slow request can't hang the
-  // whole page's location resolution.
+  // EXIF lives in the JPEG's first segment, so the head of the file is all
+  // that's needed — 128KB against originals of around 3MB. Verified against
+  // the full download on a sample of this folder: identical coordinates every
+  // time, at a twentieth of the bytes.
+  const EXIF_PREFIX_BYTES = 131072;
+
+  /**
+   * Whether the CDN honours a ranged request. It does today, but a fetch that
+   * simply fails would leave every Map link broken, so the first refusal
+   * switches the page back to whole-file downloads for good.
+   */
+  let rangeRequestsWork = true;
+
+  // Downloads the start of the original file (=d) from Google's CORS-friendly
+  // user-content CDN to read its EXIF GPS tag. The Drive API's ?alt=media
+  // download no longer permits browser fetch (CORS), and the CDN's resized
+  // variants strip EXIF, so the original is what has to be read. Capped at 10s
+  // so a slow request can't hang the whole page's location resolution.
   function fetchImagePrefix(fileId) {
     return withDownloadSlot(async () => {
       const url = `https://lh3.googleusercontent.com/d/${fileId}=d`;
-      const controller = new AbortController();
-      // The timeout starts when the request does, not when it was queued —
-      // otherwise everything behind a full queue would time out having never
-      // been sent.
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      async function download(useRange) {
+        const controller = new AbortController();
+        // The timeout starts when the request does, not when it was queued —
+        // otherwise everything behind a full queue would time out having never
+        // been sent.
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        try {
+          const options = { signal: controller.signal };
+          if (useRange) options.headers = { Range: `bytes=0-${EXIF_PREFIX_BYTES - 1}` };
+          const res = await fetch(url, options);
+          if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
+          return await res.arrayBuffer();
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+
+      if (!rangeRequestsWork) return download(false);
       try {
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
-        return await res.arrayBuffer();
-      } finally {
-        clearTimeout(timeoutId);
+        return await download(true);
+      } catch (e) {
+        rangeRequestsWork = false;
+        return download(false);
       }
     });
   }
