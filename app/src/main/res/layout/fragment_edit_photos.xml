@@ -5,11 +5,16 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- Hidden while photos are being picked for deletion: the two jobs it
-         starts are not available mid-pick, and a Delete Selected button sitting
-         above a Delete button is an easy mis-tap. -->
+    <!-- Hidden while photos are being picked for deletion: the jobs it starts
+         are not available mid-pick, and a Delete Selected button sitting above
+         a Delete button is an easy mis-tap. -->
     <LinearLayout
         android:id="@+id/topButtonBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -40,6 +45,22 @@
             android:textSize="12sp"
             android:paddingVertical="12dp"
             android:text="@string/delete_selected" />
+
+    </LinearLayout>
+
+        <!-- On its own row: it walks the whole folder, so it is nothing like a
+             quick toggle and shouldn't sit crammed beside two other jobs. -->
+        <Button
+            android:id="@+id/describeAllButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/btn_3d"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:paddingVertical="12dp"
+            android:text="@string/describe_all" />
 
     </LinearLayout>
 

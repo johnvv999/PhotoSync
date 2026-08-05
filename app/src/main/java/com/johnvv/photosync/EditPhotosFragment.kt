@@ -95,6 +95,7 @@ class EditPhotosFragment : Fragment() {
         restoreState(savedInstanceState)
         binding.photosList.layoutManager = LinearLayoutManager(requireContext())
         binding.fixLocationsButton.setOnClickListener { fixLocations() }
+        binding.describeAllButton.setOnClickListener { confirmDescribeMissing() }
         binding.deleteSelectedButton.setOnClickListener { startPickingAnyPhoto() }
         binding.deleteButton.setOnClickListener { confirmDelete() }
         binding.cancelButton.setOnClickListener { cancelPicking() }
@@ -208,6 +209,82 @@ class EditPhotosFragment : Fragment() {
         // the list instead of merely somewhere on screen.
         (binding.photosList.layoutManager as? LinearLayoutManager)
             ?.scrollToPositionWithOffset(position, 0)
+    }
+
+    /**
+     * Describes every photo that hasn't got a description yet, so Info is
+     * instant later instead of costing a download and an AI call per tap.
+     *
+     * Asks first, with the count: on a folder this size it is hundreds of AI
+     * calls and a long wait, which is not something to start by accident.
+     */
+    private fun confirmDescribeMissing() {
+        if (photos.isEmpty()) {
+            binding.statusText.text = getString(R.string.no_synced_photos)
+            return
+        }
+        val missing = photos.count { it.description.isNullOrBlank() }
+        if (missing == 0) {
+            binding.statusText.text = getString(R.string.describe_none_missing)
+            return
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.describe_confirm_title)
+            .setMessage(getString(R.string.describe_confirm_message, missing))
+            .setPositiveButton(R.string.describe_confirm_yes) { _, _ -> describeMissing() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun describeMissing() {
+        val drive = this.drive ?: return
+        setButtonsEnabled(false)
+        binding.statusText.text = getString(R.string.describe_copy_progress, 0, photos.size)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    DrivePhotoInfo.describeMissing(
+                        drive,
+                        photos,
+                        onCopyProgress = { done, total ->
+                            reportProgress(R.string.describe_copy_progress, done, total)
+                        },
+                        onDescribeProgress = { done, total ->
+                            reportProgress(R.string.describe_progress, done, total)
+                        }
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (_binding == null) return@launch
+                binding.statusText.text = getString(R.string.couldnt_load_synced_photos)
+                setButtonsEnabled(true)
+                return@launch
+            }
+
+            if (_binding == null) return@launch
+            // Re-read the folder so the descriptions just written come back with
+            // the listing — otherwise Info would still be working from photos
+            // whose description field this app knows is now out of date.
+            SyncedPhotosActivity.invalidateCache()
+            loadPhotos(finalStatus = describeOutcome(result))
+        }
+    }
+
+    /** Reports what the pass did, mentioning only the parts that happened. */
+    private fun describeOutcome(result: DrivePhotoInfo.BulkResult): String = buildString {
+        append(getString(R.string.describe_created, result.created))
+        if (result.reused > 0) {
+            append(" ")
+            append(getString(R.string.describe_reused, result.reused))
+        }
+        if (result.failed > 0) {
+            append(" ")
+            append(getString(R.string.describe_failed, result.failed))
+        }
     }
 
     /** Leaves either picker — or the "nothing found" screen — without deleting anything. */
@@ -600,6 +677,7 @@ class EditPhotosFragment : Fragment() {
     private fun setButtonsEnabled(enabled: Boolean) {
         binding.fixLocationsButton.isEnabled = enabled
         binding.deleteSelectedButton.isEnabled = enabled
+        binding.describeAllButton.isEnabled = enabled
     }
 
     override fun onDestroyView() {

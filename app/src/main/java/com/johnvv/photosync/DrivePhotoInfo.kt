@@ -72,6 +72,89 @@ object DrivePhotoInfo {
         return description
     }
 
+    /** What a pass over the folder achieved. */
+    data class BulkResult(
+        /** Photos described by the AI just now. */
+        val created: Int,
+        /** Photos that already had a description in the shared cache — no AI call needed. */
+        val reused: Int,
+        /** Photos that couldn't be described, usually a download or network failure. */
+        val failed: Int,
+        /** How many were missing a description when the pass started. */
+        val considered: Int
+    )
+
+    /**
+     * Gives every photo without a description one, and writes it to the file.
+     *
+     * Doing this ahead of time is the only way Info is ever instant on a photo
+     * nobody has opened: the alternative is one person waiting ten seconds for
+     * a download and an AI call, on each photo, whenever they happen to tap it.
+     *
+     * Sequential on purpose. Each photo means pulling a few megabytes into
+     * memory, and the point of this pass is that nobody is waiting on it — so
+     * there is nothing to gain from running several at once and a heap to lose.
+     *
+     * Blocking — call from a background dispatcher.
+     */
+    fun describeMissing(
+        drive: DriveServiceHelper,
+        photos: List<DrivePhoto>,
+        onCopyProgress: (Int, Int) -> Unit = { _, _ -> },
+        onDescribeProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): BulkResult {
+        val missing = photos.filter { it.description.isNullOrBlank() }
+        var created = 0
+        var reused = 0
+        var failed = 0
+
+        // Pass one: photos already described somewhere else. Browsing the
+        // website describes photos too, and those answers can only live in the
+        // proxy's cache — the page has no way to write to Drive. Copying them
+        // across costs one small request each and no AI call at all, so they
+        // are worth clearing out before anything expensive starts.
+        val stillMissing = mutableListOf<DrivePhoto>()
+        missing.forEachIndexed { index, photo ->
+            onCopyProgress(index + 1, missing.size)
+            val remembered = GeminiClient.lookupDescription(photo.fileId, photo.md5Checksum)
+            if (remembered == null) {
+                stillMissing += photo
+                return@forEachIndexed
+            }
+            DrivePhotoCache.putDescription(photo.fileId, remembered)
+            storeOnDrive(drive, photo, remembered)
+            reused++
+        }
+
+        // Pass two: the ones nobody has ever described — a download and an AI
+        // call each, which is the part that takes real time.
+        stillMissing.forEachIndexed { index, photo ->
+            onDescribeProgress(index + 1, stillMissing.size)
+
+            val bytes = DrivePhotoCache.bytes(drive, photo.fileId)
+            if (bytes == null) {
+                failed++
+                return@forEachIndexed
+            }
+            val gps = coords(drive, photo)
+            val description = GeminiClient.describeImage(
+                bytes, gps?.get(0), gps?.get(1), photo.fileId, photo.md5Checksum
+            )
+            if (looksLikeFailure(description)) {
+                // Counted as a failure rather than stored: writing a network
+                // error onto the file would make one bad moment permanent, and
+                // the photo would never be tried again.
+                failed++
+                return@forEachIndexed
+            }
+            DrivePhotoCache.putDescription(photo.fileId, description)
+            storeOnDrive(drive, photo, description)
+            created++
+        }
+
+        return BulkResult(created, reused, failed, missing.size)
+    }
+
     /**
      * Best effort, and only for a real answer: a network hiccup returns ordinary
      * text, and writing that to the file would make one bad moment permanent for

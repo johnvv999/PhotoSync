@@ -103,6 +103,18 @@
     <string name="delete_button">Delete</string>
     <string name="cancel_button">Cancel</string>
     <string name="nothing_ticked_to_delete">No photos ticked. Tick the box on a photo, then tap Delete.</string>
+    <!-- Describing every photo up front -->
+    <string name="describe_all">Add Missing Info</string>
+    <string name="describe_confirm_title">Describe photos?</string>
+    <string name="describe_confirm_message">%1$d photo(s) have no description saved to Google Drive. Many are likely described already — browsing the website describes them too, and those are copied across in moments. Only the rest need a download and an AI call. Leave the app open until it finishes.</string>
+    <string name="describe_confirm_yes">Describe</string>
+    <string name="describe_copy_progress">Checking what\'s already described… %1$d of %2$d</string>
+    <string name="describe_progress">Describing %1$d of %2$d…</string>
+    <string name="describe_none_missing">Every photo already has a description.</string>
+    <string name="describe_created">Created %1$d description(s).</string>
+    <string name="describe_reused">Took %1$d from the shared cache — no AI call needed.</string>
+    <string name="describe_failed">%1$d couldn\'t be described.</string>
+
     <string name="start_at_title">Start at which photo?</string>
     <string name="start_at_message">1 to %1$d, oldest first. The list opens at that photo — you can still scroll either way.</string>
     <string name="pick_any_selected">%1$d of %2$d photos ticked. Tick any photo, then tap Delete — or Cancel to stop.</string>
