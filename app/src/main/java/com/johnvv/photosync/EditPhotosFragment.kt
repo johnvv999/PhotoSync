@@ -12,7 +12,9 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.johnvv.photosync.databinding.FragmentEditPhotosBinding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,6 +29,15 @@ class EditPhotosFragment : Fragment() {
     private companion object {
         /** Heading for photos whose name carries no real place; matches DriveServiceHelper's fallback. */
         const val OTHER_PHOTOS_LABEL = "Other Photos"
+
+        // Ticking your way through hundreds of photos is minutes of work, and
+        // Android is free to destroy this screen the moment you leave it — to
+        // take a call, to check something, to answer a message. Without these,
+        // coming back threw that work away and dropped you at the top of the
+        // list, which is the one thing the picker exists to avoid.
+        const val STATE_MODE = "editMode"
+        const val STATE_SELECTED = "selectedForDeletion"
+        const val STATE_FIRST_VISIBLE = "firstVisiblePosition"
     }
 
     private var _binding: FragmentEditPhotosBinding? = null
@@ -44,6 +55,13 @@ class EditPhotosFragment : Fragment() {
 
     /** File IDs ticked for deletion, shared with whichever adapter is showing. */
     private val selectedForDeletion = mutableSetOf<String>()
+
+    /**
+     * Where the list should be put once it has something to show. The photos
+     * arrive from Drive well after the view does, so a restored scroll position
+     * has to wait for them rather than being applied on the spot.
+     */
+    private var pendingScrollPosition: Int? = null
 
     /** What the list is currently for. */
     private enum class Mode {
@@ -74,11 +92,40 @@ class EditPhotosFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        restoreState(savedInstanceState)
         binding.photosList.layoutManager = LinearLayoutManager(requireContext())
         binding.fixLocationsButton.setOnClickListener { fixLocations() }
         binding.deleteSelectedButton.setOnClickListener { startPickingAnyPhoto() }
         binding.deleteButton.setOnClickListener { confirmDelete() }
         binding.cancelButton.setOnClickListener { cancelPicking() }
+    }
+
+    /**
+     * Keeps the picker's state across the screen being destroyed and rebuilt —
+     * leaving the app, rotating the phone, or Android reclaiming the memory.
+     *
+     * The ticks are file IDs, so they survive the photo list being re-read from
+     * Drive and still mean the same photos.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_MODE, mode.name)
+        outState.putStringArrayList(STATE_SELECTED, ArrayList(selectedForDeletion))
+        val layoutManager = _binding?.photosList?.layoutManager as? LinearLayoutManager
+        outState.putInt(
+            STATE_FIRST_VISIBLE,
+            layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+        )
+    }
+
+    private fun restoreState(savedInstanceState: Bundle?) {
+        val state = savedInstanceState ?: return
+        mode = state.getString(STATE_MODE)
+            ?.let { saved -> Mode.entries.firstOrNull { it.name == saved } }
+            ?: Mode.BROWSE
+        selectedForDeletion.addAll(state.getStringArrayList(STATE_SELECTED).orEmpty())
+        val position = state.getInt(STATE_FIRST_VISIBLE, RecyclerView.NO_POSITION)
+        if (position != RecyclerView.NO_POSITION) pendingScrollPosition = position
     }
 
     /**
@@ -216,7 +263,18 @@ class EditPhotosFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        if (hasLoaded) return
+        if (hasLoaded) {
+            // The tab's view can be torn down and rebuilt while the fragment
+            // itself lives on, which leaves the list with no adapter and the
+            // screen blank. Rebuild it from the photos already in hand rather
+            // than reading the folder again.
+            if (photos.isNotEmpty() && binding.photosList.adapter == null) {
+                showEditList()
+                binding.statusText.text =
+                    if (mode == Mode.PICK_ANY) selectionStatus() else describeFolder()
+            }
+            return
+        }
 
         // Sign-in lives on the Settings tab, so the account may only appear after
         // this fragment was built — resolve it here, when the tab is first opened.
@@ -253,16 +311,31 @@ class EditPhotosFragment : Fragment() {
                     }
                     drive.listPhotosInFolder(id)
                 }
+            } catch (e: CancellationException) {
+                // Leaving the tab, or the app, cancels this — and the cancellation
+                // surfaces as an exception where the Drive call resumes. Caught as
+                // an ordinary failure it went on to touch views that no longer
+                // existed, which crashed the app: leave while it was loading, come
+                // back, and the screen had started over with the ticks gone.
+                throw e
             } catch (e: Exception) {
                 // Put the list back, or a failure leaves "Loading…" on screen for good.
+                if (_binding == null) return@launch
                 applyMode()
                 binding.statusText.text = getString(R.string.couldnt_load_synced_photos)
                 setButtonsEnabled(true)
                 return@launch
             }
+            if (_binding == null) return@launch
             photos = loaded
             showEditList()
-            binding.statusText.text = finalStatus ?: describeFolder()
+            // Mid-pick — restored after the screen was destroyed — the tick
+            // count is the line that belongs here, not the folder summary.
+            binding.statusText.text = when {
+                finalStatus != null -> finalStatus
+                mode == Mode.PICK_ANY -> selectionStatus()
+                else -> describeFolder()
+            }
             setButtonsEnabled(true)
         }
     }
@@ -299,13 +372,18 @@ class EditPhotosFragment : Fragment() {
                         reportProgress(R.string.fixing_progress, done, total)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Put the list back, or a failure leaves "Loading…" on screen for good.
+                if (_binding == null) return@launch
                 applyMode()
                 binding.statusText.text = getString(R.string.couldnt_load_synced_photos)
                 setButtonsEnabled(true)
                 return@launch
             }
+
+            if (_binding == null) return@launch
 
             // An empty folder isn't a successful no-op worth reporting as one:
             // "renamed 0 photo(s), 0 took the location of an earlier photo" reads
@@ -382,9 +460,11 @@ class EditPhotosFragment : Fragment() {
     }
 
 
+    private fun selectionStatus(): String =
+        getString(R.string.pick_any_selected, selectedForDeletion.size, photos.size)
+
     private fun updateSelectionStatus() {
-        binding.statusText.text =
-            getString(R.string.pick_any_selected, selectedForDeletion.size, photos.size)
+        binding.statusText.text = selectionStatus()
     }
 
     private fun confirmDelete() {
@@ -420,6 +500,11 @@ class EditPhotosFragment : Fragment() {
                         drive.trashFile(fileId)
                         DrivePhotoCache.forget(fileId)
                         deleted++
+                    } catch (e: CancellationException) {
+                        // Not a photo that failed to delete — the screen is gone.
+                        // Counted as a failure it would keep working through the
+                        // rest of the list and report nonsense at the end.
+                        throw e
                     } catch (e: Exception) {
                         failed++
                     }
@@ -429,6 +514,7 @@ class EditPhotosFragment : Fragment() {
 
             selectedForDeletion.clear()
             mode = Mode.BROWSE
+            if (_binding == null) return@launch
             applyMode()
             SyncedPhotosActivity.invalidateCache()
 
@@ -485,6 +571,17 @@ class EditPhotosFragment : Fragment() {
                 selectedForDeletion, { updateSelectionStatus() }
             ) { photo, label -> editLocation(photo, label) }.also { it.selectionMode = selectable }
             binding.photosList.adapter = editAdapter
+        }
+
+        // Posted, because the list has only just been handed its rows and can't
+        // scroll to one it hasn't laid out yet.
+        pendingScrollPosition?.let { saved ->
+            pendingScrollPosition = null
+            val position = saved.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+            binding.photosList.post {
+                (_binding?.photosList?.layoutManager as? LinearLayoutManager)
+                    ?.scrollToPositionWithOffset(position, 0)
+            }
         }
     }
 
