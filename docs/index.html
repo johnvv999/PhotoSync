@@ -522,31 +522,50 @@
       return;
     }
 
-    const url = new URL("https://www.googleapis.com/drive/v3/files");
-    url.searchParams.set("q", `'${FOLDER_ID}' in parents and trashed=false and mimeType contains 'image/'`);
-    // `description` carries the AI text the app already worked out for a photo,
-    // and it arrives with the listing at no extra cost — so Info can show it
-    // without a Gemini round trip, and without every visitor paying to be told
-    // the same thing. `md5Checksum` keys the proxy's cache of descriptions this
-    // page generated itself: it changes only if the image content does, so a
-    // rename (which PhotoSync does routinely) doesn't discard the text.
-    url.searchParams.set("fields", "files(id,name,description,createdTime,parents,mimeType,trashed,md5Checksum)");
-    url.searchParams.set("key", DRIVE_API_KEY);
-    url.searchParams.set("orderBy", "createdTime");
+    function listingUrl(pageToken) {
+      const url = new URL("https://www.googleapis.com/drive/v3/files");
+      url.searchParams.set("q", `'${FOLDER_ID}' in parents and trashed=false and mimeType contains 'image/'`);
+      // `description` carries the AI text the app already worked out for a photo,
+      // and it arrives with the listing at no extra cost — so Info can show it
+      // without a Gemini round trip, and without every visitor paying to be told
+      // the same thing. `md5Checksum` keys the proxy's cache of descriptions this
+      // page generated itself: it changes only if the image content does, so a
+      // rename (which PhotoSync does routinely) doesn't discard the text.
+      url.searchParams.set("fields", "nextPageToken,files(id,name,description,createdTime,parents,mimeType,trashed,md5Checksum)");
+      url.searchParams.set("key", DRIVE_API_KEY);
+      url.searchParams.set("orderBy", "createdTime");
+      // Drive hands back 100 files unless told otherwise, and quietly offers the
+      // rest behind a token. Asked for one page and never following it, this
+      // page simply stopped at the hundredth photo — with no gap, no error, and
+      // nothing to suggest the folder went on.
+      url.searchParams.set("pageSize", "1000");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      return url;
+    }
 
-    let files;
+    let files = [];
     try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        contentEl.textContent = `Couldn't load photos (HTTP ${res.status}). The folder may not be shared publicly yet.`;
-        return;
+      let pageToken = null;
+      // Bounded so a token that never clears can't spin forever: a thousand a
+      // page, so this covers a library far larger than the folder is likely to
+      // hold, and stops rather than hanging if it doesn't.
+      for (let page = 0; page < 50; page++) {
+        const res = await fetch(listingUrl(pageToken));
+        if (!res.ok) {
+          contentEl.textContent = `Couldn't load photos (HTTP ${res.status}). The folder may not be shared publicly yet.`;
+          return;
+        }
+        const data = await res.json();
+        files = files.concat(
+          (data.files || []).filter(
+            (f) => f.trashed !== true &&
+                   f.mimeType && f.mimeType.startsWith("image/") &&
+                   (f.parents || []).includes(FOLDER_ID)
+          )
+        );
+        pageToken = data.nextPageToken || null;
+        if (!pageToken) break;
       }
-      const data = await res.json();
-      files = (data.files || []).filter(
-        (f) => f.trashed !== true &&
-               f.mimeType && f.mimeType.startsWith("image/") &&
-               (f.parents || []).includes(FOLDER_ID)
-      );
     } catch (e) {
       contentEl.textContent = "Couldn't reach Google Drive. Check your connection.";
       return;
