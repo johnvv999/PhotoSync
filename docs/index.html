@@ -147,6 +147,8 @@
   const contentEl = document.getElementById("content");
   const infoCache = new Map();
   const gpsCache = new Map();
+  /** fileId -> the in-flight GPS read, so two callers share one download. */
+  const gpsInFlight = new Map();
 
   /** Parses "Country_City" from this app's own upload naming convention, or null if it doesn't match. */
   // Tokens the uploader writes when it couldn't work out where a photo was
@@ -237,22 +239,55 @@
       );
   }
 
+  // Every photo card asks for its GPS as it renders, and each answer costs a
+  // download of the full original. Left unbounded that is a hundred multi-
+  // megabyte requests fired at once, which exhausts the browser's connection
+  // pool: anything else the page needs — notably the small "is this photo
+  // already described" lookup behind Info — then waits ten seconds behind
+  // them, looking for all the world like it went off to the AI.
+  //
+  // Four at a time keeps the pipe busy without owning it. The rest wait here,
+  // in our queue, instead of in the browser's.
+  const MAX_CONCURRENT_ORIGINALS = 4;
+  let activeOriginalFetches = 0;
+  const originalFetchQueue = [];
+
+  function withDownloadSlot(task) {
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        activeOriginalFetches++;
+        task().then(resolve, reject).finally(() => {
+          activeOriginalFetches--;
+          const next = originalFetchQueue.shift();
+          if (next) next();
+        });
+      };
+      if (activeOriginalFetches < MAX_CONCURRENT_ORIGINALS) run();
+      else originalFetchQueue.push(run);
+    });
+  }
+
   // Downloads the original file (=d) from Google's CORS-friendly user-content
   // CDN to read its EXIF GPS tag. The Drive API's ?alt=media download no longer
   // permits browser fetch (CORS), and the CDN's resized variants strip EXIF, so
   // the original is needed here. Capped at 10s so a slow request can't hang the
   // whole page's location resolution.
-  async function fetchImagePrefix(fileId) {
-    const url = `https://lh3.googleusercontent.com/d/${fileId}=d`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
-      return await res.arrayBuffer();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+  function fetchImagePrefix(fileId) {
+    return withDownloadSlot(async () => {
+      const url = `https://lh3.googleusercontent.com/d/${fileId}=d`;
+      const controller = new AbortController();
+      // The timeout starts when the request does, not when it was queued —
+      // otherwise everything behind a full queue would time out having never
+      // been sent.
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
+        return await res.arrayBuffer();
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
   }
 
   /** Reads GPS coordinates from a JPEG's EXIF data, or null if none present. */
@@ -346,15 +381,29 @@
   // photo that genuinely has no location, with no way to tell the two apart or retry.
   async function getGpsForPhoto(fileId) {
     if (gpsCache.has(fileId)) return gpsCache.get(fileId);
-    let result;
-    try {
-      const buffer = await fetchImagePrefix(fileId);
-      result = { ok: true, coords: readExifGps(buffer) };
-    } catch (e) {
-      result = { ok: false };
-    }
-    if (result.ok) gpsCache.set(fileId, result);
-    return result;
+
+    // The city headings and the card's own Map link both want this, and they
+    // ask at much the same moment. The cache is only written once an answer
+    // arrives, so without sharing the request in flight the same photo gets
+    // downloaded twice.
+    const pending = gpsInFlight.get(fileId);
+    if (pending) return pending;
+
+    const attempt = (async () => {
+      let result;
+      try {
+        const buffer = await fetchImagePrefix(fileId);
+        result = { ok: true, coords: readExifGps(buffer) };
+      } catch (e) {
+        result = { ok: false };
+      }
+      if (result.ok) gpsCache.set(fileId, result);
+      gpsInFlight.delete(fileId);
+      return result;
+    })();
+
+    gpsInFlight.set(fileId, attempt);
+    return attempt;
   }
 
   function proxyPost(payload) {
