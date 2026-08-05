@@ -4,6 +4,11 @@
 // by anyone, and a plain API key hardcoded in the public page already got
 // auto-detected and revoked by Google once.
 //
+// Describing a photo is the only thing this Worker does. It also carried a
+// multi-image "compare" mode for the app's Find Redundant feature, which was
+// removed from both apps; the endpoint went with it rather than staying
+// reachable, since anyone holding the app secret could still have called it.
+//
 // Auth is service-account based (GCP org policy on this project now mandates
 // it for any new Gemini-capable key) rather than a plain API key: this Worker
 // signs a JWT with the service account's private key and exchanges it for a
@@ -34,29 +39,13 @@
 
 const ALLOWED_ORIGIN = "https://johnvv999.github.io";
 const GEMINI_MODEL = "gemini-flash-latest";
+// Fixed server-side rather than accepted from the caller. The app's secret is
+// extractable from the APK, so anyone can reach this Worker — what stops it
+// becoming a free general-purpose Gemini endpoint on your quota is that the
+// only thing it will ever ask is this one question about one photo.
 const GEMINI_PROMPT =
   "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
 
-// Used by the Android app's "Find Redundant Photos" pass. The app pre-groups
-// visually similar photos on-device (perceptual hashing) and sends each group
-// here for Gemini to make the actual keep/discard judgement — near-identical
-// pixels don't mean redundant (a burst of a moving subject isn't), and clearly
-// different pixels can still be redundant (the same view reshot badly).
-//
-// The prompt is fixed server-side rather than passed in by the caller: this
-// Worker's credential must stay scoped to the two things PhotoSync does with
-// it, not become a general-purpose Gemini endpoint for anyone holding the
-// (extractable) app secret.
-const COMPARE_PROMPT =
-  "These photos from one personal photo library were flagged as visually similar. " +
-  "Decide which are redundant near-duplicates that could be deleted without losing anything, " +
-  "keeping the single best one (sharpest, best framed, best exposed, most complete). " +
-  "Photos that capture genuinely different moments, subjects, or angles are NOT redundant, even if they look alike. " +
-  "Respond with ONLY a JSON object, no markdown fence, in this exact shape: " +
-  '{"keep": <1-based index of the photo to keep>, "redundant": [<1-based indices safe to delete>], "reason": "<one short sentence>"}. ' +
-  'If none are actually redundant, return {"keep": 1, "redundant": [], "reason": "..."}.';
-
-const MAX_COMPARE_IMAGES = 8;
 const TOKEN_SCOPE = "https://www.googleapis.com/auth/generative-language";
 
 // Descriptions are kept in a KV namespace so a photo is only ever described
@@ -219,56 +208,37 @@ export default {
       return json({ error: "Invalid JSON body" }, 400, headers);
     }
 
-    const { mode, images, mimeType, data, lat, lon, photoId, version } = body;
+    const { mode, mimeType, data, lat, lon, photoId, version } = body;
 
     // A request naming a photo but carrying no image is a cache lookup. It
     // exists so the page can find out whether a description is already known
     // *before* downloading the photo to send here — on a hit that saves a
     // multi-megabyte download on someone's phone, which is the slowest part of
     // the whole exchange.
-    if (mode === "lookup" || (photoId && !data && mode !== "compare")) {
+    if (mode === "lookup" || (photoId && !data)) {
       const hit = await readCachedDescription(env, photoId, version);
       return hit
         ? json({ text: hit, cached: true }, 200, headers)
         : json({ miss: true }, 200, headers);
     }
 
-    // Two request shapes: the original single-image "describe this photo", and
-    // the app's multi-image duplicate comparison.
-    let prompt;
-    let imageParts;
-    if (mode === "compare") {
-      if (!Array.isArray(images) || images.length < 2) {
-        return json({ error: "compare mode needs at least 2 images" }, 400, headers);
-      }
-      if (images.length > MAX_COMPARE_IMAGES) {
-        return json({ error: `compare mode accepts at most ${MAX_COMPARE_IMAGES} images` }, 400, headers);
-      }
-      if (images.some((img) => !img || typeof img.data !== "string")) {
-        return json({ error: "Missing image data" }, 400, headers);
-      }
-      prompt = COMPARE_PROMPT;
-      imageParts = images.map((img) => ({
-        inline_data: { mime_type: img.mimeType || "image/jpeg", data: img.data },
-      }));
-    } else {
-      if (!data || typeof data !== "string") {
-        return json({ error: "Missing image data" }, 400, headers);
-      }
-      // Optional GPS from the caller lets Gemini pin the actual location/landmark.
-      prompt = GEMINI_PROMPT;
-      if (typeof lat === "number" && typeof lon === "number") {
-        prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
-      }
-      imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
-
-      // Checked again even though the caller was meant to look first: two
-      // people opening the same photo at once both miss the lookup, and a
-      // caller that skips it entirely (the app) shouldn't pay for a second
-      // description of a photo already in the cache.
-      const hit = await readCachedDescription(env, photoId, version);
-      if (hit) return json({ text: hit, cached: true }, 200, headers);
+    if (!data || typeof data !== "string") {
+      return json({ error: "Missing image data" }, 400, headers);
     }
+
+    // Optional GPS from the caller lets Gemini pin the actual location/landmark.
+    let prompt = GEMINI_PROMPT;
+    if (typeof lat === "number" && typeof lon === "number") {
+      prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
+    }
+    const imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
+
+    // Checked again even though the caller was meant to look first: two people
+    // opening the same photo at once both miss the lookup, and a caller that
+    // skips it entirely (the app) shouldn't pay for a second description of a
+    // photo already in the cache.
+    const cached = await readCachedDescription(env, photoId, version);
+    if (cached) return json({ text: cached, cached: true }, 200, headers);
 
     let accessToken;
     try {
@@ -303,7 +273,7 @@ export default {
 
     // Only a real description is worth keeping — caching "No description
     // returned." would make one bad response permanent for that photo.
-    if (mode !== "compare" && text) {
+    if (text) {
       await writeCachedDescription(env, photoId, version, description);
     }
 
