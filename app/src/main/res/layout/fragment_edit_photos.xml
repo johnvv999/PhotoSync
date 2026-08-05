@@ -5,7 +5,11 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!-- Hidden while photos are being picked for deletion: the two jobs it
+         starts are not available mid-pick, and a Delete Selected button sitting
+         above a Delete button is an easy mis-tap. -->
     <LinearLayout
+        android:id="@+id/topButtonBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"

@@ -2,9 +2,12 @@ package com.johnvv.photosync
 
 import android.app.AlertDialog
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -35,6 +38,9 @@ class EditPhotosFragment : Fragment() {
     private var folderId: String? = null
     private var photos: List<DrivePhoto> = emptyList()
     private var editAdapter: EditPhotoAdapter? = null
+
+    /** What the list is showing, headings included — what a scroll position indexes into. */
+    private var listItems: List<SyncedListItem> = emptyList()
 
     /** File IDs ticked for deletion, shared with whichever adapter is showing. */
     private val selectedForDeletion = mutableSetOf<String>()
@@ -76,19 +82,74 @@ class EditPhotosFragment : Fragment() {
     }
 
     /**
-     * Turns the ordinary photo list into a picker so any photo can be deleted,
-     * not just ones the duplicate scan flagged.
+     * Turns the ordinary photo list into a picker so any photo can be deleted.
+     *
+     * Asks where to start first. The folder runs to hundreds of photos and the
+     * one you came to delete is rarely near the top, so without this every
+     * deletion begins with a long scroll.
      */
     private fun startPickingAnyPhoto() {
         if (photos.isEmpty()) {
             binding.statusText.text = getString(R.string.no_synced_photos)
             return
         }
+
+        val input = EditText(requireContext()).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText("1")
+            setSelection(text.length)
+        }
+        // Wrapped so the field isn't flush against the dialog's edges.
+        val padding = (20 * resources.displayMetrics.density).toInt()
+        val frame = FrameLayout(requireContext()).apply {
+            setPadding(padding, padding / 2, padding, 0)
+            addView(input)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.start_at_title)
+            .setMessage(getString(R.string.start_at_message, photos.size))
+            .setView(frame)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                // Anything unusable falls back to the top rather than refusing
+                // to open the list.
+                val typed = input.text.toString().trim().toIntOrNull() ?: 1
+                beginPicking(typed.coerceIn(1, photos.size))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun beginPicking(startAt: Int) {
         showLoading()
         selectedForDeletion.clear()
         mode = Mode.PICK_ANY
         showEditList()
         updateSelectionStatus()
+        scrollToPhoto(startAt)
+    }
+
+    /**
+     * Puts the [oneBasedIndex]th photo at the top of the list. Counted over
+     * photos alone — the place headings between them are not something anyone
+     * counts when they say "the 200th photo".
+     */
+    private fun scrollToPhoto(oneBasedIndex: Int) {
+        var seen = 0
+        var position = -1
+        for ((index, item) in listItems.withIndex()) {
+            if (item !is SyncedListItem.Photo) continue
+            seen++
+            if (seen == oneBasedIndex) {
+                position = index
+                break
+            }
+        }
+        if (position < 0) return
+        // Offset rather than a plain scroll, so the photo lands at the top of
+        // the list instead of merely somewhere on screen.
+        (binding.photosList.layoutManager as? LinearLayoutManager)
+            ?.scrollToPositionWithOffset(position, 0)
     }
 
     /** Leaves either picker — or the "nothing found" screen — without deleting anything. */
@@ -132,6 +193,10 @@ class EditPhotosFragment : Fragment() {
     /** The delete bar belongs to the two picking modes and nothing else. */
     private fun applyMode() {
         binding.deleteBar.visibility = if (mode == Mode.BROWSE) View.GONE else View.VISIBLE
+        // Neither job at the top can be started mid-pick, and Delete Selected
+        // sitting above Delete is an easy mis-tap. They come back on Cancel, and
+        // once a deletion finishes.
+        binding.topButtonBar.visibility = if (mode == Mode.BROWSE) View.VISIBLE else View.GONE
         binding.deleteButton.visibility = View.VISIBLE
         binding.emptyMessage.visibility = View.GONE
         binding.photosList.visibility = View.VISIBLE
@@ -397,6 +462,7 @@ class EditPhotosFragment : Fragment() {
         val items = buildSyncedListItems(visible) { photo ->
             LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL
         }
+        listItems = items
         val selectable = mode == Mode.PICK_ANY
         val adapter = editAdapter
         if (adapter != null && binding.photosList.adapter === adapter) {

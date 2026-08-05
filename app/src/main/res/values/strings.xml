@@ -103,6 +103,8 @@
     <string name="delete_button">Delete</string>
     <string name="cancel_button">Cancel</string>
     <string name="nothing_ticked_to_delete">No photos ticked. Tick the box on a photo, then tap Delete.</string>
+    <string name="start_at_title">Start at which photo?</string>
+    <string name="start_at_message">1 to %1$d, oldest first. The list opens at that photo — you can still scroll either way.</string>
     <string name="pick_any_selected">%1$d of %2$d photos ticked. Tick any photo, then tap Delete — or Cancel to stop.</string>
     <string name="delete_dialog_title">Delete from Google Drive?</string>
     <string name="delete_dialog_message">%1$d photo(s) will be moved to your Google Drive trash, where they can still be recovered for 30 days.</string>
