@@ -15,8 +15,8 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
 
-/** Photos a screen of travel would cover if the scrub never sped up — the rate of the first few pixels. */
-private const val PHOTOS_PER_SCREEN_AT_REST = 25.0
+/** Full-length swipes it takes to cross the whole list, which is what sets the drag's rate. */
+private const val SWIPES_TO_CROSS = 10.0
 
 /**
  * The browse list's date scrubber: a bar down the right edge saying where in the
@@ -30,15 +30,16 @@ private const val PHOTOS_PER_SCREEN_AT_REST = 25.0
  * where it landed decides the photo, so carrying it back to the start of the
  * stroke carries the list back with it.
  *
- * How far it reaches rises with the cube of that distance, counted in photos
- * rather than in calendar time — a nudge moves by one or two, the full height
- * of the screen by the whole collection, however many that is and however long
- * they took to gather. Measuring the reach in days instead meant a fixed span
- * had to be picked in advance, and any collection shorter than it hit its own
- * end partway down the screen with travel left over.
+ * The thumb rides under the finger for the whole stroke and the list moves
+ * in step with it, a screen of travel to a tenth of the collection — so ten
+ * swipes cross the lot, however large it is. Counting photos rather than
+ * days is what lets that hold: a reach measured in calendar time needs a
+ * span picked in advance, and anything shorter than it hits its own end
+ * partway down the screen with travel left over.
  *
- * The cost is that the thumb no longer keeps pace with the finger: it reports
- * where you have arrived rather than being a handle you carry.
+ * While the list is being scrolled by hand instead, the thumb goes back to
+ * marking how far down it has got. The two never show at once — the bar is
+ * only ever on screen for the finger that is moving it.
  *
  * Drawn as an overlay above the list rather than by the list itself, so the
  * photos scroll underneath it untouched.
@@ -81,6 +82,9 @@ class TimelineScrubber @JvmOverloads constructor(
 
     private var scrubbing = false
     private var anchorY = 0f
+
+    /** Where the finger is now, which is where the thumb is drawn while it holds on. */
+    private var fingerY = 0f
 
     /** The photo the list stood on when the finger landed; the whole stroke is measured from here. */
     private var anchorIndex = 0
@@ -161,6 +165,7 @@ class TimelineScrubber @JvmOverloads constructor(
                 if (event.x < width - dp(40f)) return false
                 scrubbing = true
                 anchorY = event.y
+                fingerY = event.y
                 shownIndex = indexAtOrAfter(firstVisiblePosition())
                 anchorIndex = shownIndex
                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -183,6 +188,7 @@ class TimelineScrubber @JvmOverloads constructor(
     /** Takes the list to whatever photo a finger at [y] is asking for. */
     private fun scrubTo(y: Float) {
         if (height == 0) return
+        fingerY = y
         // Clamped here rather than stored clamped, so the stroke keeps measuring
         // from where it began: running past the end of the collection costs
         // exactly the travel needed to come back off it.
@@ -195,23 +201,18 @@ class TimelineScrubber @JvmOverloads constructor(
     /**
      * How many photos along a finger [dy] pixels from where it landed is reaching.
      *
-     * A gentle straight term for the first few pixels, plus a cubic one that has
-     * taken over well before the finger is halfway down, scaled so a full screen
-     * of travel is exactly the whole collection — a big folder simply moves
-     * faster under the same gesture. Cubed rather than an exponential, which
-     * would spend most of the screen beyond the last photo.
+     * Straight, not accelerating: the thumb rides under the finger, and any
+     * curve here would have the two running at different rates down the same
+     * track. A screen of travel is a tenth of the list, putting the far end
+     * ten swipes away whether that is two hundred photos or twenty thousand.
      *
      * Odd in [dy], so upwards costs exactly what downwards does.
      */
     private fun reach(dy: Float): Int {
-        // A screen of travel already spans everything, so further asks for
-        // nothing more; a captured finger can still report a y beyond the view.
+        // A stroke can be no longer than the screen, but a captured finger can
+        // still report a y beyond the view; bounded so it asks for no more.
         val screens = (dy / height).toDouble().coerceIn(-1.0, 1.0)
-        // Never steeper at rest than the collection is long, which keeps the two
-        // terms from between them overshooting the end at a full screen.
-        val nearRate = minOf(PHOTOS_PER_SCREEN_AT_REST, photoTimes.size.toDouble())
-        val farRate = photoTimes.size - nearRate
-        return (nearRate * screens + farRate * screens * screens * screens).roundToInt()
+        return (screens * photoTimes.size / SWIPES_TO_CROSS).roundToInt()
     }
 
     private fun show() {
@@ -251,12 +252,16 @@ class TimelineScrubber @JvmOverloads constructor(
         rect.set(centreX - dp(1.5f), top, centreX + dp(1.5f), bottom)
         canvas.drawRoundRect(rect, dp(1.5f), dp(1.5f), trackPaint)
 
-        // Placed by how many photos are behind it, matching what a drag moves
-        // by, so the thumb and the finger agree about how far there is to go.
-        // The date in the middle of the screen is what says "when".
+        // Under the finger while it is dragging, so the thumb is the thing being
+        // held rather than a readout trailing it. Left alone it goes back to
+        // marking how far down the list has got, which only happens while the
+        // list is scrolling under its own hand, never mid-stroke.
         val travel = bottom - top - thumbHeight
-        val progress = shownIndex.toFloat() / (photoTimes.size - 1)
-        val thumbTop = top + travel * progress.coerceIn(0f, 1f)
+        val thumbTop = if (scrubbing) {
+            (fingerY - thumbHeight / 2f).coerceIn(top, bottom - thumbHeight)
+        } else {
+            top + travel * (shownIndex.toFloat() / (photoTimes.size - 1)).coerceIn(0f, 1f)
+        }
 
         // Wide enough to read as something to take hold of, and to be seen
         // against a photo rather than lost in one.
