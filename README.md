@@ -66,7 +66,10 @@ already be inside that same shared folder.
 The app opens on a three-tab bar; tabs can be tapped or swiped between.
 
 - **Sync** — what's backed up, live progress of a running sync, sync options,
-  browse synced photos, and **Stop Sync** (enabled only while one is running;
+  browse synced photos (dragging the right edge of that list scrubs through
+  the dates — a screenful of finger travel is twelve months, and the date
+  you've reached shows in the middle of the screen while you hold on), and
+  **Stop Sync** (enabled only while one is running;
   cancels between photos, so whatever already uploaded stays put and the rest
   resume on the next sync).
 - **Settings** — sign in with Google, share the public browsing link, point

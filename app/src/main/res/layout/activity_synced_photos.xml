@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The side padding sits on the rows rather than on this container, so the
+     scrubber can reach the edge of the screen where a scrollbar belongs. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:paddingTop="24dp"
+    android:paddingBottom="24dp">
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -15,11 +18,20 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp"
             android:text="@string/no_synced_photos"
             android:visibility="gone" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/photosList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp" />
+
+        <com.johnvv.photosync.TimelineScrubber
+            android:id="@+id/timelineScrubber"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
@@ -29,7 +41,9 @@
         android:id="@+id/returnButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
         android:layout_marginTop="12dp"
+        android:layout_marginEnd="24dp"
         android:text="@string/return_button" />
 
 </LinearLayout>

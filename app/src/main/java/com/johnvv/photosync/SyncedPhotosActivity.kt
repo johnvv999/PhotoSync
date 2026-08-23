@@ -87,6 +87,7 @@ class SyncedPhotosActivity : AppCompatActivity() {
             binding.emptyText.visibility = View.GONE
             val items = buildSyncedListItems(photos)
             binding.photosList.adapter = DrivePhotoAdapter(this, items, drive, lifecycleScope, accountName)
+            binding.timelineScrubber.attach(binding.photosList, items)
         }
     }
 }
