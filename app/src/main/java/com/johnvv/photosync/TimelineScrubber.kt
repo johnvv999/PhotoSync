@@ -13,12 +13,10 @@ import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
-/** What a screen of travel would cover if the scrub never sped up — the rate of the first few pixels. */
-private const val WEEK_MS = 604_800_000L
-
-/** What a screen of travel actually covers, once the drag is far enough for the cube to dominate. */
-private const val DECADE_MS = 315_569_520_000L
+/** Photos a screen of travel would cover if the scrub never sped up — the rate of the first few pixels. */
+private const val PHOTOS_PER_SCREEN_AT_REST = 25.0
 
 /**
  * The browse list's date scrubber: a bar down the right edge saying where in the
@@ -28,17 +26,19 @@ private const val DECADE_MS = 315_569_520_000L
  * Both are drawn only while a finger is down. A collection is looked at far more
  * than it is navigated, so neither sits over the photos when nobody is moving.
  *
- * Dragging the bar is a position, not a pace: the date follows where the finger
- * sits relative to where it landed, so carrying it back to the start of the
- * stroke carries the list back with it, and running off the end of the
- * collection costs nothing to undo.
+ * Dragging the bar is a position, not a pace: where the finger sits relative to
+ * where it landed decides the photo, so carrying it back to the start of the
+ * stroke carries the list back with it.
  *
- * How far it reaches rises with the cube of that distance — a nudge moves by
- * hours, a quarter of the screen by a couple of months, the full height by ten
- * years. One gesture therefore does both picking a day out of a trip and
- * crossing the whole collection, at the cost of the thumb no longer keeping
- * pace with the finger: it reports where you have arrived rather than being a
- * handle you carry.
+ * How far it reaches rises with the cube of that distance, counted in photos
+ * rather than in calendar time — a nudge moves by one or two, the full height
+ * of the screen by the whole collection, however many that is and however long
+ * they took to gather. Measuring the reach in days instead meant a fixed span
+ * had to be picked in advance, and any collection shorter than it hit its own
+ * end partway down the screen with travel left over.
+ *
+ * The cost is that the thumb no longer keeps pace with the finger: it reports
+ * where you have arrived rather than being a handle you carry.
  *
  * Drawn as an overlay above the list rather than by the list itself, so the
  * photos scroll underneath it untouched.
@@ -76,14 +76,14 @@ class TimelineScrubber @JvmOverloads constructor(
     /** Where each of those photos is scrolled to — its heading, when it has one. */
     private var scrollPositions = IntArray(0)
 
-    /** Each photo's capture time, rising alongside [photoPositions]. */
+    /** Each photo's capture time, alongside [photoPositions]. */
     private var photoTimes = LongArray(0)
 
     private var scrubbing = false
     private var anchorY = 0f
 
-    /** Where the timeline stood when the finger landed; the whole stroke is measured from here. */
-    private var anchorTimeMs = 0L
+    /** The photo the list stood on when the finger landed; the whole stroke is measured from here. */
+    private var anchorIndex = 0
 
     /** The photo whose date is on screen, as an index into [photoTimes]. */
     private var shownIndex = 0
@@ -138,10 +138,10 @@ class TimelineScrubber @JvmOverloads constructor(
             // Landing on the heading rather than on the photo, so an arrival
             // says where it has arrived.
             scrolls += if (index > 0 && items[index - 1] is SyncedListItem.Header) index - 1 else index
-            // Grouping a day's photos by place can leave one slightly out of
-            // time order; the searches below need a rising sequence, and holding
-            // such a photo to its predecessor's time moves it by under a day.
-            times += maxOf(item.photo.chronoTimeMs, times.lastOrNull() ?: Long.MIN_VALUE)
+            // Taken as the list has them: grouping a day's photos by place can
+            // leave one slightly out of time order, and the label should say
+            // when the photo on screen was taken, not when its neighbours were.
+            times += item.photo.chronoTimeMs
         }
         photoPositions = positions.toIntArray()
         scrollPositions = scrolls.toIntArray()
@@ -162,7 +162,7 @@ class TimelineScrubber @JvmOverloads constructor(
                 scrubbing = true
                 anchorY = event.y
                 shownIndex = indexAtOrAfter(firstVisiblePosition())
-                anchorTimeMs = photoTimes[shownIndex]
+                anchorIndex = shownIndex
                 parent?.requestDisallowInterceptTouchEvent(true)
                 show()
                 return true
@@ -180,36 +180,38 @@ class TimelineScrubber @JvmOverloads constructor(
         return false
     }
 
-    /** Takes the list to whatever moment a finger at [y] is asking for. */
+    /** Takes the list to whatever photo a finger at [y] is asking for. */
     private fun scrubTo(y: Float) {
         if (height == 0) return
-        // Clamped on the way out rather than stored clamped, so the stroke keeps
-        // measuring from where it began: overshooting the end of the collection
-        // costs exactly the travel needed to come back off it.
-        val target = (anchorTimeMs + reach(y - anchorY))
-            .coerceIn(photoTimes.first(), photoTimes.last())
-
-        shownIndex = nearestTimeIndex(target)
+        // Clamped here rather than stored clamped, so the stroke keeps measuring
+        // from where it began: running past the end of the collection costs
+        // exactly the travel needed to come back off it.
+        shownIndex = (anchorIndex + reach(y - anchorY)).coerceIn(0, photoTimes.size - 1)
         (list?.layoutManager as? LinearLayoutManager)
             ?.scrollToPositionWithOffset(scrollPositions[shownIndex], 0)
         invalidate()
     }
 
     /**
-     * How far through time a finger [dy] pixels from where it landed is reaching.
+     * How many photos along a finger [dy] pixels from where it landed is reaching.
      *
-     * A straight week-per-screen term for the first few pixels, plus a cubic one
-     * that has taken over well before the finger is halfway down. Cubed rather
-     * than an exponential, which reaches a decade at the same point but then
-     * spends the rest of the screen on centuries nobody has photographs of.
+     * A gentle straight term for the first few pixels, plus a cubic one that has
+     * taken over well before the finger is halfway down, scaled so a full screen
+     * of travel is exactly the whole collection — a big folder simply moves
+     * faster under the same gesture. Cubed rather than an exponential, which
+     * would spend most of the screen beyond the last photo.
      *
      * Odd in [dy], so upwards costs exactly what downwards does.
      */
-    private fun reach(dy: Float): Long {
-        // Beyond a screen only happens when a captured finger leaves the view;
-        // bounded so the far end of the curve stays somewhere on the calendar.
-        val screens = (dy / height).toDouble().coerceIn(-1.5, 1.5)
-        return (WEEK_MS * screens + (DECADE_MS - WEEK_MS) * screens * screens * screens).toLong()
+    private fun reach(dy: Float): Int {
+        // A screen of travel already spans everything, so further asks for
+        // nothing more; a captured finger can still report a y beyond the view.
+        val screens = (dy / height).toDouble().coerceIn(-1.0, 1.0)
+        // Never steeper at rest than the collection is long, which keeps the two
+        // terms from between them overshooting the end at a full screen.
+        val nearRate = minOf(PHOTOS_PER_SCREEN_AT_REST, photoTimes.size.toDouble())
+        val farRate = photoTimes.size - nearRate
+        return (nearRate * screens + farRate * screens * screens * screens).roundToInt()
     }
 
     private fun show() {
@@ -238,18 +240,6 @@ class TimelineScrubber @JvmOverloads constructor(
         return low.coerceIn(0, photoPositions.size - 1)
     }
 
-    /** The photo taken closest to [timeMs], as an index into [photoTimes]. */
-    private fun nearestTimeIndex(timeMs: Long): Int {
-        var low = 0
-        var high = photoTimes.size - 1
-        while (low < high) {
-            val mid = (low + high) / 2
-            if (photoTimes[mid] < timeMs) low = mid + 1 else high = mid
-        }
-        if (low > 0 && timeMs - photoTimes[low - 1] < photoTimes[low] - timeMs) return low - 1
-        return low
-    }
-
     override fun onDraw(canvas: Canvas) {
         if (photoTimes.size < 2 || alpha == 0f) return
 
@@ -261,13 +251,12 @@ class TimelineScrubber @JvmOverloads constructor(
         rect.set(centreX - dp(1.5f), top, centreX + dp(1.5f), bottom)
         canvas.drawRoundRect(rect, dp(1.5f), dp(1.5f), trackPaint)
 
-        // Placed along the collection's dates rather than along the list: a year
-        // of holidays and a year of nothing then take up the same room, so the
-        // bar answers "when" rather than "how far down".
-        val span = (photoTimes.last() - photoTimes.first()).toFloat()
-        val elapsed = (photoTimes[shownIndex] - photoTimes.first()).toFloat()
+        // Placed by how many photos are behind it, matching what a drag moves
+        // by, so the thumb and the finger agree about how far there is to go.
+        // The date in the middle of the screen is what says "when".
         val travel = bottom - top - thumbHeight
-        val thumbTop = top + travel * (elapsed / span).coerceIn(0f, 1f)
+        val progress = shownIndex.toFloat() / (photoTimes.size - 1)
+        val thumbTop = top + travel * progress.coerceIn(0f, 1f)
 
         // Wide enough to read as something to take hold of, and to be seen
         // against a photo rather than lost in one.
