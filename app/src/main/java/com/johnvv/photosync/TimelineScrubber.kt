@@ -14,8 +14,11 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
-/** A year, near enough for scrubbing: what one screen of finger travel covers. */
-private const val YEAR_MS = 31_556_952_000L
+/** What a screen of travel would cover if the scrub never sped up — the rate of the first few pixels. */
+private const val WEEK_MS = 604_800_000L
+
+/** What a screen of travel actually covers, once the drag is far enough for the cube to dominate. */
+private const val DECADE_MS = 315_569_520_000L
 
 /**
  * The browse list's date scrubber: a bar down the right edge saying where in the
@@ -25,13 +28,17 @@ private const val YEAR_MS = 31_556_952_000L
  * Both are drawn only while a finger is down. A collection is looked at far more
  * than it is navigated, so neither sits over the photos when nobody is moving.
  *
- * Dragging the bar moves through time at one fixed rate: a finger travelling the
- * height of the screen covers twelve months, whatever the collection spans. That
- * makes the gesture mean the same thing in a two-year folder as in a ten-year
- * one, at the cost of the thumb no longer keeping pace with the finger — it
- * reports where you have arrived rather than being a handle you carry. A long
- * collection therefore takes several drags to cross, which is the point: one
- * screen of travel should not skip a decade.
+ * Dragging the bar is a position, not a pace: the date follows where the finger
+ * sits relative to where it landed, so carrying it back to the start of the
+ * stroke carries the list back with it, and running off the end of the
+ * collection costs nothing to undo.
+ *
+ * How far it reaches rises with the cube of that distance — a nudge moves by
+ * hours, a quarter of the screen by a couple of months, the full height by ten
+ * years. One gesture therefore does both picking a day out of a trip and
+ * crossing the whole collection, at the cost of the thumb no longer keeping
+ * pace with the finger: it reports where you have arrived rather than being a
+ * handle you carry.
  *
  * Drawn as an overlay above the list rather than by the list itself, so the
  * photos scroll underneath it untouched.
@@ -75,8 +82,8 @@ class TimelineScrubber @JvmOverloads constructor(
     private var scrubbing = false
     private var anchorY = 0f
 
-    /** The moment the drag is currently pointing at, which need not be a photo. */
-    private var scrubTimeMs = 0L
+    /** Where the timeline stood when the finger landed; the whole stroke is measured from here. */
+    private var anchorTimeMs = 0L
 
     /** The photo whose date is on screen, as an index into [photoTimes]. */
     private var shownIndex = 0
@@ -155,14 +162,13 @@ class TimelineScrubber @JvmOverloads constructor(
                 scrubbing = true
                 anchorY = event.y
                 shownIndex = indexAtOrAfter(firstVisiblePosition())
-                scrubTimeMs = photoTimes[shownIndex]
+                anchorTimeMs = photoTimes[shownIndex]
                 parent?.requestDisallowInterceptTouchEvent(true)
                 show()
                 return true
             }
             MotionEvent.ACTION_MOVE -> if (scrubbing) {
-                scrubBy(event.y - anchorY)
-                anchorY = event.y
+                scrubTo(event.y)
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (scrubbing) {
@@ -174,18 +180,36 @@ class TimelineScrubber @JvmOverloads constructor(
         return false
     }
 
-    /** Moves [dy] pixels of finger travel through the timeline, and the list with it. */
-    private fun scrubBy(dy: Float) {
+    /** Takes the list to whatever moment a finger at [y] is asking for. */
+    private fun scrubTo(y: Float) {
         if (height == 0) return
-        // Re-anchored on every move, so running off either end of the collection
-        // leaves no wound-up slack to unwind before the list turns around.
-        scrubTimeMs = (scrubTimeMs + (dy * YEAR_MS / height).toLong())
+        // Clamped on the way out rather than stored clamped, so the stroke keeps
+        // measuring from where it began: overshooting the end of the collection
+        // costs exactly the travel needed to come back off it.
+        val target = (anchorTimeMs + reach(y - anchorY))
             .coerceIn(photoTimes.first(), photoTimes.last())
 
-        shownIndex = nearestTimeIndex(scrubTimeMs)
+        shownIndex = nearestTimeIndex(target)
         (list?.layoutManager as? LinearLayoutManager)
             ?.scrollToPositionWithOffset(scrollPositions[shownIndex], 0)
         invalidate()
+    }
+
+    /**
+     * How far through time a finger [dy] pixels from where it landed is reaching.
+     *
+     * A straight week-per-screen term for the first few pixels, plus a cubic one
+     * that has taken over well before the finger is halfway down. Cubed rather
+     * than an exponential, which reaches a decade at the same point but then
+     * spends the rest of the screen on centuries nobody has photographs of.
+     *
+     * Odd in [dy], so upwards costs exactly what downwards does.
+     */
+    private fun reach(dy: Float): Long {
+        // Beyond a screen only happens when a captured finger leaves the view;
+        // bounded so the far end of the curve stays somewhere on the calendar.
+        val screens = (dy / height).toDouble().coerceIn(-1.5, 1.5)
+        return (WEEK_MS * screens + (DECADE_MS - WEEK_MS) * screens * screens * screens).toLong()
     }
 
     private fun show() {
@@ -245,8 +269,10 @@ class TimelineScrubber @JvmOverloads constructor(
         val travel = bottom - top - thumbHeight
         val thumbTop = top + travel * (elapsed / span).coerceIn(0f, 1f)
 
-        rect.set(centreX - dp(4f), thumbTop, centreX + dp(4f), thumbTop + thumbHeight)
-        canvas.drawRoundRect(rect, dp(4f), dp(4f), thumbPaint)
+        // Wide enough to read as something to take hold of, and to be seen
+        // against a photo rather than lost in one.
+        rect.set(centreX - dp(11f), thumbTop, centreX + dp(11f), thumbTop + thumbHeight)
+        canvas.drawRoundRect(rect, dp(11f), dp(11f), thumbPaint)
 
         // The date of the photo actually reached, not of the moment the finger
         // points at — dragging across a gap in the collection should show the

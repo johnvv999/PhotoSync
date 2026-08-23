@@ -67,8 +67,10 @@ The app opens on a three-tab bar; tabs can be tapped or swiped between.
 
 - **Sync** — what's backed up, live progress of a running sync, sync options,
   browse synced photos (dragging the right edge of that list scrubs through
-  the dates — a screenful of finger travel is twelve months, and the date
-  you've reached shows in the middle of the screen while you hold on), and
+  the dates, gently at first and faster the further you drag — a nudge moves
+  by hours, the full height of the screen by ten years — with the date you've
+  reached shown in the middle of the screen while you hold on; slide back to
+  where you started and so does the list), and
   **Stop Sync** (enabled only while one is running;
   cancels between photos, so whatever already uploaded stays put and the rest
   resume on the next sync).
