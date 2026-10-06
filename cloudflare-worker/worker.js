@@ -9,16 +9,18 @@
 // removed from both apps; the endpoint went with it rather than staying
 // reachable, since anyone holding the app secret could still have called it.
 //
-// Auth is service-account based (GCP org policy on this project now mandates
-// it for any new Gemini-capable key) rather than a plain API key: this Worker
-// signs a JWT with the service account's private key and exchanges it for a
-// short-lived OAuth2 access token, then calls Gemini with a Bearer token
-// instead of `?key=`.
+// Auth is an "authorization key": an API key bound to a service account, the
+// only kind Gemini accepts on this project. It once signed a JWT with the
+// service account's private key and sent the resulting OAuth token instead,
+// until Google started refusing service-account tokens for Gemini with a 403.
 //
 // Two secrets, set via `wrangler secret put <NAME>`:
-//   SERVICE_ACCOUNT_JSON — the full JSON key downloaded from IAM & Admin →
-//     Service Accounts → (the account) → Keys → Add Key → JSON. Paste the
-//     whole file contents as the secret value.
+//   GEMINI_API_KEY — APIs & Services → Credentials → Create credentials →
+//     API key, restrict it to Gemini API, then turn on the service-account
+//     binding that appears and pick the service account. Pipe it in rather
+//     than pasting at wrangler's prompt, which can capture stray terminal
+//     characters that Google then rejects with a bodiless 400:
+//       $k = Read-Host "key"; $k.Trim() | npx wrangler secret put GEMINI_API_KEY
 //   APP_SHARED_SECRET — any random string you make up. Set the exact same
 //     value in local.properties as GEMINI_PROXY_APP_SECRET so the Android
 //     app can authenticate. Low-stakes if it leaks (extractable from the
@@ -46,7 +48,6 @@ const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_PROMPT =
   "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
 
-const TOKEN_SCOPE = "https://www.googleapis.com/auth/generative-language";
 
 // Descriptions are kept in a KV namespace so a photo is only ever described
 // once for the whole world, not once per visitor per browser.
@@ -93,11 +94,6 @@ async function writeCachedDescription(env, photoId, version, text) {
   }
 }
 
-// Cached across requests within the same Worker isolate — avoids minting a
-// fresh access token (an extra round trip to Google) on every photo. Isolates
-// get recycled periodically, at which point this just starts empty again.
-let cachedToken = null;
-
 function corsHeaders(origin) {
   const headers = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -112,75 +108,6 @@ function json(body, status, headers) {
     status,
     headers: { ...headers, "Content-Type": "application/json" },
   });
-}
-
-function base64url(input) {
-  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : new Uint8Array(input);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function pemToArrayBuffer(pem) {
-  const b64 = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\s/g, "");
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-/** Signs a JWT with the service account's private key and exchanges it for a short-lived Google OAuth2 access token. */
-async function getAccessToken(env) {
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.expiresAt > now + 60) {
-    return cachedToken.accessToken;
-  }
-
-  const serviceAccount = JSON.parse(env.SERVICE_ACCOUNT_JSON);
-  const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
-
-  const encodedHeader = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const encodedClaims = base64url(JSON.stringify({
-    iss: serviceAccount.client_email,
-    scope: TOKEN_SCOPE,
-    aud: tokenUri,
-    iat: now,
-    exp: now + 3600,
-  }));
-  const signingInput = `${encodedHeader}.${encodedClaims}`;
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToArrayBuffer(serviceAccount.private_key),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    new TextEncoder().encode(signingInput)
-  );
-  const jwt = `${signingInput}.${base64url(signature)}`;
-
-  const tokenRes = await fetch(tokenUri, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  const tokenData = await tokenRes.json();
-  if (!tokenRes.ok) {
-    throw new Error(`Token exchange failed: ${tokenData.error_description || tokenData.error || tokenRes.status}`);
-  }
-
-  cachedToken = { accessToken: tokenData.access_token, expiresAt: now + tokenData.expires_in };
-  return cachedToken.accessToken;
 }
 
 export default {
@@ -240,11 +167,11 @@ export default {
     const cached = await readCachedDescription(env, photoId, version);
     if (cached) return json({ text: cached, cached: true }, 200, headers);
 
-    let accessToken;
-    try {
-      accessToken = await getAccessToken(env);
-    } catch (e) {
-      return json({ error: `Auth failed: ${e.message}` }, 502, headers);
+    // Trimmed because a key pasted into `wrangler secret put` can pick up a
+    // stray line ending, which Google rejects with a bare, bodiless 400.
+    const apiKey = (env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      return json({ error: "Auth failed: GEMINI_API_KEY is not set" }, 502, headers);
     }
 
     const geminiBody = {
@@ -257,14 +184,21 @@ export default {
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(geminiBody),
       }
     );
-    const geminiData = await geminiRes.json();
+    // Read as text first: some rejections arrive with an empty or non-JSON
+    // body, and parsing those directly threw, crashing the Worker with an
+    // opaque Cloudflare 1101 instead of saying what Google objected to.
+    const geminiText = await geminiRes.text();
+    let geminiData = {};
+    try {
+      geminiData = JSON.parse(geminiText);
+    } catch {}
 
     if (!geminiRes.ok) {
-      const message = (geminiData.error && geminiData.error.message) || "unknown error";
+      const message = (geminiData.error && geminiData.error.message) || geminiText.slice(0, 300) || "empty response";
       return json({ error: `Gemini request failed (${geminiRes.status}): ${message}` }, 502, headers);
     }
 
