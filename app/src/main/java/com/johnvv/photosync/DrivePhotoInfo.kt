@@ -43,7 +43,10 @@ object DrivePhotoInfo {
     fun describe(drive: DriveServiceHelper, photo: DrivePhoto): String? {
         DrivePhotoCache.description(photo.fileId)?.let { return it }
 
-        photo.description?.takeIf { it.isNotBlank() }?.let { stored ->
+        // A stored error is treated as no description at all, so photos that
+        // had one written onto them by an older build heal the next time Info
+        // is tapped instead of showing the failure forever.
+        photo.description?.takeUnless { looksLikeFailure(it) }?.let { stored ->
             DrivePhotoCache.putDescription(photo.fileId, stored)
             return stored
         }
@@ -66,7 +69,11 @@ object DrivePhotoInfo {
         val description = GeminiClient.describeImage(
             bytes, gps?.get(0), gps?.get(1), photo.fileId, photo.md5Checksum
         )
-        DrivePhotoCache.putDescription(photo.fileId, description)
+        // Failures aren't remembered even for this session, so tapping Info
+        // again actually retries rather than replaying the error.
+        if (!looksLikeFailure(description)) {
+            DrivePhotoCache.putDescription(photo.fileId, description)
+        }
 
         storeOnDrive(drive, photo, description)
         return description
@@ -103,7 +110,7 @@ object DrivePhotoInfo {
         onCopyProgress: (Int, Int) -> Unit = { _, _ -> },
         onDescribeProgress: (Int, Int) -> Unit = { _, _ -> }
     ): BulkResult {
-        val missing = photos.filter { it.description.isNullOrBlank() }
+        val missing = photos.filter { it.description.let { d -> d == null || looksLikeFailure(d) } }
         var created = 0
         var reused = 0
         var failed = 0
@@ -175,5 +182,13 @@ object DrivePhotoInfo {
             text.startsWith("Couldn't", ignoreCase = true) ||
             text.startsWith("No Gemini proxy", ignoreCase = true) ||
             text.startsWith("Request failed", ignoreCase = true) ||
-            text.startsWith("No description returned", ignoreCase = true)
+            text.startsWith("No description returned", ignoreCase = true) ||
+            // Errors relayed from the proxy itself — a Gemini rejection once got
+            // written onto photos as their description because these were missing.
+            text.startsWith("Gemini request failed", ignoreCase = true) ||
+            text.startsWith("Auth failed", ignoreCase = true) ||
+            text.startsWith("Forbidden", ignoreCase = true) ||
+            text.startsWith("Missing image data", ignoreCase = true) ||
+            text.startsWith("Invalid JSON body", ignoreCase = true) ||
+            text.startsWith("Method not allowed", ignoreCase = true)
 }

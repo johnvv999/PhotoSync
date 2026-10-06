@@ -464,6 +464,17 @@
   }
 
   /**
+   * Whether text is an error message rather than a description. The app once
+   * wrote a Gemini rejection onto photos as their description; those are
+   * treated as undescribed so they get a real one instead. Mirrors
+   * looksLikeFailure in the app's DrivePhotoInfo.kt.
+   */
+  function looksLikeFailure(text) {
+    return !text.trim() ||
+      /^(Couldn't|No Gemini proxy|Request failed|No description returned|Gemini request failed|Auth failed|Forbidden|Missing image data|Invalid JSON body|Method not allowed)/i.test(text);
+  }
+
+  /**
    * Asks the proxy whether this photo already has a description, without
    * sending the photo.
    *
@@ -732,7 +743,7 @@
         // means every visitor sees the same text rather than each generating
         // their own slightly different version of it.
         const stored = (file.description || "").trim();
-        if (stored) {
+        if (stored && !looksLikeFailure(stored)) {
           infoCache.set(file.id, stored);
           infoResult.textContent = stored;
           return;
@@ -750,7 +761,7 @@
         }
 
         const description = await describePhoto(file);
-        infoCache.set(file.id, description);
+        if (!looksLikeFailure(description)) infoCache.set(file.id, description);
         infoResult.textContent = description;
       });
 
