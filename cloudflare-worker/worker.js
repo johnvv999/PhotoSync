@@ -48,6 +48,25 @@ const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_PROMPT =
   "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
 
+// PhotoSync's library is car photos, so its app and page ask about the car
+// alone. Chosen by name from this fixed set, never sent as text, for the same
+// reason the prompt above is fixed. PhotoView sends no subject and keeps the
+// general prompt.
+const SUBJECT_PROMPTS = {
+  car:
+    "Identify the car that is the main subject of this photo. " +
+    "Begin with one line giving its manufacturer, model year, and model name, in the form " +
+    "\"Manufacturer, Year, Model\" - for example \"Porsche, 1973, 911 Carrera RS 2.7\". " +
+    "If the exact year can't be told, give the likely range, such as \"1965-1967\". " +
+    "Then, in 2-3 sentences, give interesting or special information about this car: its history, " +
+    "design, engineering, performance, or rarity, and anything visible in the photo that sets this " +
+    "particular example apart, such as its body style, color, livery, or modifications. " +
+    "Do not mention the venue, event, location, people, background, or surrounding scenery. " +
+    "If you are unsure of the make or model, say so rather than guessing. " +
+    "If there is no car in the photo, describe its main subject in one sentence, without the setting. " +
+    "Plain text only, no markdown.",
+};
+
 
 // Descriptions are kept in a KV namespace so a photo is only ever described
 // once for the whole world, not once per visitor per browser.
@@ -71,24 +90,27 @@ const CACHE_PREFIX = "desc:v1:";
  * and modifiedTime would throw the cache away every time PhotoSync renamed a
  * file, which it does routinely when fixing locations.
  */
-function cacheKey(photoId, version) {
-  return version ? `${CACHE_PREFIX}${photoId}:${version}` : `${CACHE_PREFIX}${photoId}`;
+function cacheKey(photoId, version, subject) {
+  // Each subject keeps its own answers, so switching a photo to the car prompt
+  // doesn't serve it the general description it was given before.
+  const prefix = subject ? `desc:${subject}:v1:` : CACHE_PREFIX;
+  return version ? `${prefix}${photoId}:${version}` : `${prefix}${photoId}`;
 }
 
-async function readCachedDescription(env, photoId, version) {
+async function readCachedDescription(env, photoId, version, subject) {
   if (!env.DESCRIPTIONS || !photoId) return null;
   try {
-    return await env.DESCRIPTIONS.get(cacheKey(photoId, version));
+    return await env.DESCRIPTIONS.get(cacheKey(photoId, version, subject));
   } catch {
     // A cache that can't be read is a slow path, not a failure.
     return null;
   }
 }
 
-async function writeCachedDescription(env, photoId, version, text) {
+async function writeCachedDescription(env, photoId, version, subject, text) {
   if (!env.DESCRIPTIONS || !photoId || !text) return;
   try {
-    await env.DESCRIPTIONS.put(cacheKey(photoId, version), text);
+    await env.DESCRIPTIONS.put(cacheKey(photoId, version, subject), text);
   } catch {
     // Same reasoning: the caller already has its answer.
   }
@@ -136,6 +158,8 @@ export default {
     }
 
     const { mode, mimeType, data, lat, lon, photoId, version } = body;
+    // Anything unrecognised falls back to the general prompt rather than failing.
+    const subject = Object.hasOwn(SUBJECT_PROMPTS, body.subject) ? body.subject : null;
 
     // A request naming a photo but carrying no image is a cache lookup. It
     // exists so the page can find out whether a description is already known
@@ -143,7 +167,7 @@ export default {
     // multi-megabyte download on someone's phone, which is the slowest part of
     // the whole exchange.
     if (mode === "lookup" || (photoId && !data)) {
-      const hit = await readCachedDescription(env, photoId, version);
+      const hit = await readCachedDescription(env, photoId, version, subject);
       return hit
         ? json({ text: hit, cached: true }, 200, headers)
         : json({ miss: true }, 200, headers);
@@ -154,8 +178,9 @@ export default {
     }
 
     // Optional GPS from the caller lets Gemini pin the actual location/landmark.
-    let prompt = GEMINI_PROMPT;
-    if (typeof lat === "number" && typeof lon === "number") {
+    // Not for a subject prompt, which is told to leave the place out entirely.
+    let prompt = subject ? SUBJECT_PROMPTS[subject] : GEMINI_PROMPT;
+    if (!subject && typeof lat === "number" && typeof lon === "number") {
       prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
     }
     const imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
@@ -164,7 +189,7 @@ export default {
     // opening the same photo at once both miss the lookup, and a caller that
     // skips it entirely (the app) shouldn't pay for a second description of a
     // photo already in the cache.
-    const cached = await readCachedDescription(env, photoId, version);
+    const cached = await readCachedDescription(env, photoId, version, subject);
     if (cached) return json({ text: cached, cached: true }, 200, headers);
 
     // Trimmed because a key pasted into `wrangler secret put` can pick up a
@@ -208,7 +233,7 @@ export default {
     // Only a real description is worth keeping — caching "No description
     // returned." would make one bad response permanent for that photo.
     if (text) {
-      await writeCachedDescription(env, photoId, version, description);
+      await writeCachedDescription(env, photoId, version, subject, description);
     }
 
     return json({ text: description }, 200, headers);

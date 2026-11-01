@@ -39,6 +39,14 @@ class DriveServiceHelper(context: Context, accountName: String) {
         const val PROP_ORDER = "photosyncOrder"
         const val PROP_TAKEN_MS = "photosyncTakenMs"
 
+        /**
+         * Which prompt wrote a file's description. A public property rather than
+         * an appProperty, so the browsing page, reading with an anonymous key,
+         * can see it too. A description without the current value predates the
+         * car prompt and is treated as missing, so it gets rewritten.
+         */
+        const val PROP_DESCRIBED_AS = "photosyncDescribedAs"
+
         /** EXIF timestamps come back from Drive as "yyyy:MM:dd HH:mm:ss" in the camera's local time. */
         private val EXIF_TIME_FORMAT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).apply {
             timeZone = TimeZone.getDefault()
@@ -174,7 +182,7 @@ class DriveServiceHelper(context: Context, accountName: String) {
                 // doesn't orphan the text.
                 .setFields(
                     "nextPageToken, files(id, name, description, mimeType, createdTime, " +
-                        "md5Checksum, appProperties, imageMediaMetadata(time, location))"
+                        "md5Checksum, appProperties, properties, imageMediaMetadata(time, location))"
                 )
                 .execute()
             files += result.files.orEmpty()
@@ -193,7 +201,8 @@ class DriveServiceHelper(context: Context, accountName: String) {
                 DrivePhoto(
                     fileId = file.id,
                     name = file.name,
-                    description = file.description,
+                    description = file.description
+                        ?.takeIf { file.properties?.get(PROP_DESCRIBED_AS) == DESCRIPTION_SUBJECT },
                     md5Checksum = file.md5Checksum,
                     createdTimeMs = createdMs,
                     cityLabel = cityLabelFromName(file.name),
@@ -284,11 +293,15 @@ class DriveServiceHelper(context: Context, accountName: String) {
      * browsing page, instead of every viewer paying for the same answer.
      *
      * files.update patches only the fields it is given, so this leaves the name,
-     * timestamps and appProperties alone.
+     * timestamps and appProperties alone. It also marks which prompt wrote the
+     * text; see [PROP_DESCRIBED_AS].
      */
     fun setDescription(fileId: String, text: String) {
         service.files()
-            .update(fileId, DriveFile().apply { description = text })
+            .update(fileId, DriveFile().apply {
+                description = text
+                properties = mapOf(PROP_DESCRIBED_AS to DESCRIPTION_SUBJECT)
+            })
             .setFields("id")
             .execute()
     }

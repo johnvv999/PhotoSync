@@ -9,6 +9,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
+ * Which of the proxy's fixed prompts describes this library's photos: the car
+ * in them, with nothing about where it was parked. The browsing page sends the
+ * same value, and Drive files are marked with it once described.
+ */
+const val DESCRIPTION_SUBJECT = "car"
+
+/**
  * Sends a photo to the PhotoSync Gemini proxy (Cloudflare Worker, see
  * /cloudflare-worker) and returns a short description. The Worker holds the
  * real Gemini credential server-side — nothing Gemini-related is embedded in
@@ -33,6 +40,7 @@ object GeminiClient {
         if (BuildConfig.GEMINI_PROXY_URL.isBlank()) return null
         val body = JSONObject().apply {
             put("mode", "lookup")
+            put("subject", DESCRIPTION_SUBJECT)
             put("photoId", photoId)
             if (version != null) put("version", version)
         }
@@ -66,6 +74,7 @@ object GeminiClient {
         val requestBody = JSONObject().apply {
             put("mimeType", "image/jpeg")
             put("data", base64Image)
+            put("subject", DESCRIPTION_SUBJECT)
             // Include GPS (if known) so Gemini can pin the actual location.
             if (lat != null && lon != null) {
                 put("lat", lat)

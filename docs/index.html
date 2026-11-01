@@ -455,6 +455,10 @@
     return attempt;
   }
 
+  // Which of the proxy's fixed prompts to describe photos with. Matches
+  // DESCRIPTION_SUBJECT in the app, which marks the files it describes with it.
+  const DESCRIPTION_SUBJECT = "car";
+
   function proxyPost(payload) {
     return fetch(GEMINI_PROXY_URL, {
       method: "POST",
@@ -485,7 +489,9 @@
    */
   async function lookupDescription(file) {
     try {
-      const res = await proxyPost({ mode: "lookup", photoId: file.id, version: file.md5Checksum });
+      const res = await proxyPost({
+        mode: "lookup", subject: DESCRIPTION_SUBJECT, photoId: file.id, version: file.md5Checksum,
+      });
       if (!res.ok) return null;
       const data = await res.json();
       return data.text || null;
@@ -504,6 +510,7 @@
       const payload = {
         mimeType: file.mimeType || "image/jpeg",
         data: base64Image,
+        subject: DESCRIPTION_SUBJECT,
         // Named so the proxy can remember the answer for the next visitor. The
         // checksum ties it to this photo's content, so replacing the photo
         // retires the old description rather than outliving it.
@@ -542,7 +549,7 @@
       // the same thing. `md5Checksum` keys the proxy's cache of descriptions this
       // page generated itself: it changes only if the image content does, so a
       // rename (which PhotoSync does routinely) doesn't discard the text.
-      url.searchParams.set("fields", "nextPageToken,files(id,name,description,createdTime,parents,mimeType,trashed,md5Checksum)");
+      url.searchParams.set("fields", "nextPageToken,files(id,name,description,createdTime,parents,mimeType,trashed,md5Checksum,properties)");
       url.searchParams.set("key", DRIVE_API_KEY);
       url.searchParams.set("orderBy", "createdTime");
       // Drive hands back 100 files unless told otherwise, and quietly offers the
@@ -742,7 +749,10 @@
         // already carry one. Showing it is instant, costs no Gemini call, and
         // means every visitor sees the same text rather than each generating
         // their own slightly different version of it.
-        const stored = (file.description || "").trim();
+        // Only text the app wrote with the car prompt; older descriptions are
+        // replaced rather than shown. Mirrors listPhotosInFolder in the app.
+        const describedAs = file.properties && file.properties.photosyncDescribedAs;
+        const stored = describedAs === DESCRIPTION_SUBJECT ? (file.description || "").trim() : "";
         if (stored && !looksLikeFailure(stored)) {
           infoCache.set(file.id, stored);
           infoResult.textContent = stored;
