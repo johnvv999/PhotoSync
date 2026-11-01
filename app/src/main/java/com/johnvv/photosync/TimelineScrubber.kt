@@ -10,21 +10,21 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
 import kotlin.math.roundToInt
 
 /** Full-length swipes it takes to cross the whole list, which is what sets the drag's rate. */
 private const val SWIPES_TO_CROSS = 10.0
 
 /**
- * The browse list's date scrubber: a bar down the right edge saying where in the
- * collection's timeline the list is sitting, and that spot's date in the middle
- * of the screen.
+ * The browse list's scrubber: a bar down the right edge saying where in the
+ * collection the list is sitting.
  *
- * Both are drawn only while a finger is down. A collection is looked at far more
- * than it is navigated, so neither sits over the photos when nobody is moving.
+ * It carries no date of its own. A label in the middle of the screen covered
+ * the photo and its Info text on every scroll, and the place headings already
+ * say where the list has got to.
+ *
+ * Drawn only while a finger is down. A collection is looked at far more than
+ * it is navigated, so it doesn't sit over the photos when nobody is moving.
  *
  * Dragging the bar is a position, not a pace: where the finger sits relative to
  * where it landed decides the photo, so carrying it back to the start of the
@@ -50,24 +50,11 @@ class TimelineScrubber @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val density = resources.displayMetrics.density
-    private val scaledDensity = resources.displayMetrics.scaledDensity
     private fun dp(value: Float) = value * density
 
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#33000000") }
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#E61A73E8") }
-    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#CC000000") }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = 26f * scaledDensity
-        textAlign = Paint.Align.CENTER
-    }
     private val rect = RectF()
-
-    // Dates are read in UTC, matching how the list divides its days, so the
-    // overlay never names a different day than the heading above the photo.
-    private val dateFormat = SimpleDateFormat("d MMM yyyy", Locale.getDefault()).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
-    }
 
     private var list: RecyclerView? = null
 
@@ -267,22 +254,5 @@ class TimelineScrubber @JvmOverloads constructor(
         // against a photo rather than lost in one.
         rect.set(centreX - dp(11f), thumbTop, centreX + dp(11f), thumbTop + thumbHeight)
         canvas.drawRoundRect(rect, dp(11f), dp(11f), thumbPaint)
-
-        // The date of the photo actually reached, not of the moment the finger
-        // points at — dragging across a gap in the collection should show the
-        // list standing still, because it is.
-        val text = dateFormat.format(photoTimes[shownIndex])
-        val textWidth = textPaint.measureText(text)
-        val metrics = textPaint.fontMetrics
-        val centreY = height / 2f
-        val halfText = (metrics.descent - metrics.ascent) / 2f
-        rect.set(
-            (width - textWidth) / 2f - dp(22f),
-            centreY - halfText - dp(14f),
-            (width + textWidth) / 2f + dp(22f),
-            centreY + halfText + dp(14f)
-        )
-        canvas.drawRoundRect(rect, dp(14f), dp(14f), labelPaint)
-        canvas.drawText(text, width / 2f, centreY - (metrics.ascent + metrics.descent) / 2f, textPaint)
     }
 }
