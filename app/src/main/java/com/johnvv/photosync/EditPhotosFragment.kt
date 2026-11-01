@@ -631,7 +631,7 @@ class EditPhotosFragment : Fragment() {
             return
         }
 
-        // Same grouping as the browsing page: chronological, drive-by places
+        // Same grouping as the browsing page: newest first, drive-by places
         // absorbed, repeat visits collapsed.
         val items = buildSyncedListItems(visible) { photo ->
             LocationNaming.countryFirstLabel(photo.name) ?: OTHER_PHOTOS_LABEL

@@ -33,6 +33,10 @@ private class Entry(val photo: DrivePhoto, val label: String)
  *
  * Days are divided in UTC, matching the page, so the two never disagree about
  * which day a photo near midnight belongs to.
+ *
+ * The list is shown newest first. The passes above still run oldest first —
+ * "the run before", "the day's first photo" are about the order things
+ * happened — and only the finished groups are turned around.
  */
 fun buildSyncedListItems(
     photos: List<DrivePhoto>,
@@ -89,11 +93,15 @@ fun buildSyncedListItems(
     }
 
     // Pass 3 — one heading per place per day.
+    val groups = mutableListOf<List<Entry>>()
     for (runs in dayRuns.values) {
         val visits = LinkedHashMap<String, MutableList<Entry>>()
         for (run in runs) visits.getOrPut(run.first().label) { mutableListOf() } += run
-        for (entries in visits.values) add(entries)
+        groups += visits.values
     }
+
+    // Newest first: the last group leads, and each group's latest photo heads it.
+    for (entries in groups.asReversed()) add(entries.asReversed())
 
     return items
 }
