@@ -48,24 +48,40 @@ const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_PROMPT =
   "Briefly describe what's in this photo and identify any recognizable landmark, location, or point of interest, in 2-3 sentences.";
 
-// PhotoSync's library is car photos, so its app and page ask about the car
-// alone. Chosen by name from this fixed set, never sent as text, for the same
-// reason the prompt above is fixed. PhotoView sends no subject and keeps the
-// general prompt.
+// What to say about a car: make, year and model first, then the car itself,
+// with nothing about where it was parked.
+const CAR_INSTRUCTIONS =
+  "Begin with one line giving its manufacturer, model year, and model name, in the form " +
+  "\"Manufacturer, Year, Model\" - for example \"Porsche, 1973, 911 Carrera RS 2.7\". " +
+  "If the exact year can't be told, give the likely range, such as \"1965-1967\". " +
+  "Then, in 2-3 sentences, give interesting or special information about this car: its history, " +
+  "design, engineering, performance, or rarity, and anything visible in the photo that sets this " +
+  "particular example apart, such as its body style, color, livery, or modifications. " +
+  "Do not mention the venue, event, location, people, background, or surrounding scenery. " +
+  "If you are unsure of the make or model, say so rather than guessing.";
+
+// Chosen by name from this fixed set, never sent as text, for the same reason
+// the prompt above is fixed. A caller sending no subject gets GEMINI_PROMPT.
+//   car — PhotoSync's library is car photos, so its app and page ask about
+//     the car alone.
+//   carOrGeneral — PhotoView's library is everything, so a car is described
+//     as a car and anything else as before.
 const SUBJECT_PROMPTS = {
   car:
-    "Identify the car that is the main subject of this photo. " +
-    "Begin with one line giving its manufacturer, model year, and model name, in the form " +
-    "\"Manufacturer, Year, Model\" - for example \"Porsche, 1973, 911 Carrera RS 2.7\". " +
-    "If the exact year can't be told, give the likely range, such as \"1965-1967\". " +
-    "Then, in 2-3 sentences, give interesting or special information about this car: its history, " +
-    "design, engineering, performance, or rarity, and anything visible in the photo that sets this " +
-    "particular example apart, such as its body style, color, livery, or modifications. " +
-    "Do not mention the venue, event, location, people, background, or surrounding scenery. " +
-    "If you are unsure of the make or model, say so rather than guessing. " +
+    "Identify the car that is the main subject of this photo. " + CAR_INSTRUCTIONS + " " +
     "If there is no car in the photo, describe its main subject in one sentence, without the setting. " +
     "Plain text only, no markdown.",
+  carOrGeneral:
+    "If the main subject of this photo is a car, identify it. " + CAR_INSTRUCTIONS + " " +
+    "Otherwise, briefly describe what's in this photo and identify any recognizable landmark, " +
+    "location, or point of interest, in 2-3 sentences. " +
+    "Plain text only, no markdown.",
 };
+
+// Subjects that may be told where the photo was taken. The car prompts leave
+// the place out, and coordinates only invite it back in — except that a
+// photo that turns out not to be a car is better for knowing where it is.
+const SUBJECTS_WITH_PLACE = new Set(["carOrGeneral"]);
 
 
 // Descriptions are kept in a KV namespace so a photo is only ever described
@@ -178,10 +194,13 @@ export default {
     }
 
     // Optional GPS from the caller lets Gemini pin the actual location/landmark.
-    // Not for a subject prompt, which is told to leave the place out entirely.
+    // Not for a car, which is told to leave the place out entirely.
     let prompt = subject ? SUBJECT_PROMPTS[subject] : GEMINI_PROMPT;
-    if (!subject && typeof lat === "number" && typeof lon === "number") {
-      prompt += ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
+    const placeAllowed = !subject || SUBJECTS_WITH_PLACE.has(subject);
+    if (placeAllowed && typeof lat === "number" && typeof lon === "number") {
+      prompt += subject
+        ? ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; if it is not a car, use these coordinates to help identify the specific place, landmark, or neighborhood. If it is a car, ignore them.`
+        : ` The photo was taken at approximately latitude ${lat.toFixed(6)}, longitude ${lon.toFixed(6)}; use these coordinates to help identify the specific place, landmark, or neighborhood.`;
     }
     const imageParts = [{ inline_data: { mime_type: mimeType || "image/jpeg", data } }];
 
