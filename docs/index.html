@@ -594,7 +594,8 @@
       return;
     }
 
-    // Strictly chronological — date, then time within the day.
+    // Strictly chronological — date, then time within the day. Grouped in this
+    // order, then shown newest first; see below.
     //
     // Places group themselves as a consequence, because a day's travel is
     // sequential: every Passau photo precedes every Schärding photo when that
@@ -667,15 +668,21 @@
 
     // Collapse repeat visits: one heading per place per day, positioned where
     // that day's first photo of it falls.
-    const ordered = [];
+    const groups = [];
     dayRuns.forEach((runs) => {
       const visits = new Map();
       runs.forEach((run) => {
         if (!visits.has(run.label)) visits.set(run.label, []);
         visits.get(run.label).push(...run.items);
       });
-      visits.forEach((items) => ordered.push(...items));
+      visits.forEach((items) => groups.push(items));
     });
+
+    // Newest first. Everything above runs oldest first, because absorbing and
+    // collapsing are about the order things happened; only the finished groups
+    // are turned around. Mirrors buildSyncedListItems in the app.
+    const ordered = [];
+    groups.reverse().forEach((items) => ordered.push(...items.reverse()));
 
     contentEl.className = "";
     contentEl.innerHTML = "";
